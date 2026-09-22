@@ -615,6 +615,7 @@ body[data-type="income"] .btn-primary{background:var(--income)}
 .row-btn b{display:block;font-size:15px;font-weight:500;color:var(--text)}
 .row-btn span{display:block;font-size:12px;color:var(--muted);margin-top:3px;line-height:1.45}
 .row-btn.is-danger b{color:var(--expense)}
+.row-btn.is-danger span{color:#C46B67}
 
 /* 「停止记账本服务」：不用常亮黄色块（用户要求去掉）。
    平时和普通选项外观一致，只保留标题的琥珀色文字以示区分；
