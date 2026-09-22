@@ -14,5 +14,5 @@ Thumbs.db
 # 账目数据：不纳入版本管理，避免个人财务数据进入 git 历史
 data/
 
-# 未被 README 引用的草稿截图，仅本机留存
+# 未被 README 引用的桌面截图，仅本机留存，不进版本库
 docs/preview-desktop.png

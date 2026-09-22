@@ -239,6 +239,11 @@ const server = http.createServer(function (req, res) {
   /* 静态文件由 serveStatic 里的白名单把关（data 目录、隐藏文件都进不去） */
 
   if (pathname === '/api/info') {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      res.writeHead(405, { 'Allow': 'GET, HEAD' });
+      res.end();
+      return;
+    }
     const cur = readData();
     sendJSON(res, 200, {
       mode: 'server',
