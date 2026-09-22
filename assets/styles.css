@@ -609,24 +609,16 @@ body[data-type="income"] .btn-primary{background:var(--income)}
    普通项淡灰、警示项加深黄、危险项淡红，和各自的语义色保持一致。 */
 @media (hover: hover){
   .row-btn:hover{background:#F2F2EE}
-  .row-btn.is-warn:hover{background:#F8EFD8}
+  .row-btn.is-warn:hover{background:#FDF7E6}
   .row-btn.is-danger:hover{background:#FCEDEC}
 }
 .row-btn b{display:block;font-size:15px;font-weight:500;color:var(--text)}
 .row-btn span{display:block;font-size:12px;color:var(--muted);margin-top:3px;line-height:1.45}
 .row-btn.is-danger b{color:var(--expense)}
 
-/* 「停止记账本服务」：琥珀黄警示块。
-   它会中断手机和浏览器，但不是破坏性操作（账目都在文件里），
-   所以用黄色而不是「清空数据」那种红色，两者一眼能分开。 */
-.row-btn.is-warn{
-  background:var(--warn-soft);
-  border:1px solid var(--warn-line);
-  border-radius:11px;
-  box-shadow:inset 3px 0 0 var(--warn);
-  margin:6px 0;
-  padding:12px 12px 12px 13px;
-}
+/* 「停止记账本服务」：不用常亮黄色块（用户要求去掉）。
+   平时和普通选项外观一致，只保留标题的琥珀色文字以示区分；
+   悬停/按下时才浮现淡黄底。 */
 .row-btn.is-warn b{color:var(--warn-text)}
 .row-btn.is-warn span{color:#9C8340}
 .row-btn.is-warn:active{background:#F8EFD8}
