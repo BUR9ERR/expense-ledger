@@ -602,7 +602,16 @@ body[data-type="income"] .btn-primary{background:var(--income)}
 }
 
 .row-btn:last-child{border-bottom:none}
+.row-btn{transition:background-color .15s ease}
 .row-btn:active{background:#FAFAF8}
+
+/* 鼠标悬停变色：只对真正有鼠标的设备生效（手机触屏不会粘住颜色）。
+   普通项淡灰、警示项加深黄、危险项淡红，和各自的语义色保持一致。 */
+@media (hover: hover){
+  .row-btn:hover{background:#F2F2EE}
+  .row-btn.is-warn:hover{background:#F8EFD8}
+  .row-btn.is-danger:hover{background:#FCEDEC}
+}
 .row-btn b{display:block;font-size:15px;font-weight:500;color:var(--text)}
 .row-btn span{display:block;font-size:12px;color:var(--muted);margin-top:3px;line-height:1.45}
 .row-btn.is-danger b{color:var(--expense)}
