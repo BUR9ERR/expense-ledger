@@ -1,0 +1,26 @@
+# 换行规范
+#
+# 批处理文件必须是 CRLF：cmd 解析 LF 的 .bat 会在多行语句块上出错，
+# 表现为双击后窗口一闪而过、或者毫无反应。
+# 这里显式钉死，避免克隆者因为 core.autocrlf 设置不同而拿到 LF 版本。
+
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+
+# 其余文本文件统一 LF
+*.js    text eol=lf
+*.css   text eol=lf
+*.html  text eol=lf
+*.md    text eol=lf
+*.json  text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+
+# 二进制文件不做换行转换
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.woff  binary
+*.woff2 binary

@@ -1,0 +1,15 @@
+# 临时文件：自检脚本、预览页、截图、诊断输出等一律以 _ 开头
+_*
+
+# 本机专属：node 路径、应用标记
+_node_path.txt
+*.genie
+
+.workbuddy/
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
+
+# 账目数据：不纳入版本管理，避免个人财务数据进入 git 历史
+data/
