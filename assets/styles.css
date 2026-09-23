@@ -379,6 +379,13 @@ body[data-type="income"] .btn-primary{background:var(--income)}
 .tx-item:active{background:#FAFAF8}
 .tx-item.is-editing{background:#FBF6E9}
 
+/* 从流水里改完一笔后滚回来的那条：闪一下底色，一眼看出改的是哪条 */
+@keyframes txFlash{
+  from{background:#FBF6E9}
+  to{background:transparent}
+}
+.tx-item.is-flash{animation:txFlash 1.3s ease-out 1}
+
 .tx-ico{
   width:34px;
   height:34px;

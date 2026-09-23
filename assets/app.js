@@ -390,6 +390,8 @@ var state = {
   type: 'expense',
   categoryId: 'food',
   editingId: null,
+  /* 这次编辑是从哪儿进来的：'list' = 从流水点进来的，改完要回流水并滚到那条 */
+  editFrom: 'record',
   listMonth: '',
   listFilter: 'all'
 };
@@ -443,8 +445,9 @@ function markQuickDate(offset) {
   }
 }
 
-function enterEdit(tx) {
+function enterEdit(tx, from) {
   state.editingId = tx.id;
+  state.editFrom = from === 'list' ? 'list' : 'record';
   setType(tx.type);
   state.categoryId = tx.categoryId;
   renderCategories();
@@ -491,16 +494,20 @@ function saveEntry() {
   var note = elNote.value.trim().slice(0, 40);
   var now = Date.now();
 
-  if (state.editingId) {
+  /* 这次编辑是不是从流水点进来的（是的话改完要回流水原位） */
+  var editedId = state.editingId;
+  var fromList = !!editedId && state.editFrom === 'list';
+
+  if (editedId) {
     var tx = null;
     for (var i = 0; i < db.transactions.length; i++) {
-      if (db.transactions[i].id === state.editingId) { tx = db.transactions[i]; break; }
+      if (db.transactions[i].id === editedId) { tx = db.transactions[i]; break; }
     }
     if (!tx) {
       /* 编辑到一半被别的设备删掉了，别假装保存成功 */
       exitEdit();
-      renderList();
       toast('这条记录已经不在了，可能被另一台设备删掉了', 4000);
+      if (fromList) { backToList(null); } else { renderList(); }
       return;
     }
     tx.type = state.type;
@@ -512,6 +519,12 @@ function saveEntry() {
     if (!saveDB()) { return; }
     exitEdit();
     toast('已保存修改');
+    if (fromList) {
+      /* 留在流水里，滚回刚改的那条 */
+      renderSummary();
+      backToList(editedId);
+      return;
+    }
   } else {
     db.transactions.push({
       id: uid(),
@@ -536,25 +549,32 @@ function saveEntry() {
 
 function deleteEntry() {
   if (!state.editingId) { return; }
+  var id = state.editingId;
+  var fromList = state.editFrom === 'list';
   var tx = null;
   for (var i = 0; i < db.transactions.length; i++) {
-    if (db.transactions[i].id === state.editingId) { tx = db.transactions[i]; break; }
+    if (db.transactions[i].id === id) { tx = db.transactions[i]; break; }
   }
   if (!tx) {
     exitEdit();
-    renderList();
     toast('这条记录已经不在了');
+    if (fromList) { backToList(null); } else { renderList(); }
     return;
   }
   if (!window.confirm('\u5220\u9664\u8FD9\u7B14\uFF1A' + categoryById(tx.categoryId).name + '\u3000' + fmtMoney(toCents(tx.amount)) + '\uFF1F')) {
     return;
   }
-  db.transactions = db.transactions.filter(function (t) { return t.id !== state.editingId; });
+  db.transactions = db.transactions.filter(function (t) { return t.id !== id; });
   saveDB();
   exitEdit();
   toast('\u5DF2\u5220\u9664');
-  renderList();
   renderSummary();
+  if (fromList) {
+    /* 删掉的这条已经不在列表里了，回到原来的滚动位置即可 */
+    backToList(null, true);
+  } else {
+    renderList();
+  }
 }
 
 /* ============================================================
@@ -641,6 +661,74 @@ function shiftMonth(n) {
   if (m > 12) { m = 1; y += 1; }
   state.listMonth = y + '-' + pad2(m);
   renderList();
+}
+
+/* ---------- 从流水里改完一笔，回到原位 ---------- */
+
+function findTxById(id) {
+  for (var i = 0; i < db.transactions.length; i++) {
+    if (db.transactions[i].id === id) { return db.transactions[i]; }
+  }
+  return null;
+}
+
+function syncFilterChips() {
+  var chips = elFilterChips.querySelectorAll('.chip');
+  for (var i = 0; i < chips.length; i++) {
+    chips[i].classList.toggle('is-active', chips[i].getAttribute('data-filter') === state.listFilter);
+  }
+}
+
+/* 改完/取消/删除之后回到流水，并滚到那条账目所在的位置。
+   日期被改到别的月份、或者类型被改到当前筛选之外时，
+   先把月份和筛选切到能看见它的状态，否则会出现「回是回来了，但那条不在眼前」。 */
+function backToList(id, keepScroll) {
+  var tx = id ? findTxById(id) : null;
+  if (tx) {
+    var key = String(tx.date).slice(0, 7);
+    if (/^\d{4}-\d{2}$/.test(key) && key !== state.listMonth) {
+      state.listMonth = key;
+    }
+    if (state.listFilter !== 'all' && state.listFilter !== tx.type) {
+      state.listFilter = 'all';
+      syncFilterChips();
+    }
+  }
+  go('list', keepScroll);
+  if (tx) {
+    setTimeout(function () { flashTx(tx.id); }, 30);
+  }
+}
+
+/* 把某一条滚到屏幕中间并闪一下底色，一眼就能看出刚改的是哪条。
+   先试平滑滚动；有些环境（无头浏览器、禁用了动画的系统）它不生效，
+   所以随后校验一次，没滚到位就直接跳过去，保证一定能看见。 */
+function flashTx(id) {
+  var items = elTxList.querySelectorAll('.tx-item');
+  var target = null;
+  for (var i = 0; i < items.length; i++) {
+    if (items[i].getAttribute('data-tx') === id) { target = items[i]; break; }
+  }
+  if (!target) { return; }
+
+  scrollTxIntoView(target, true);
+  setTimeout(function () { scrollTxIntoView(target, false); }, 320);
+
+  target.classList.add('is-flash');
+  setTimeout(function () { target.classList.remove('is-flash'); }, 1400);
+}
+
+function scrollTxIntoView(target, smooth) {
+  var r = target.getBoundingClientRect();
+  if (!smooth && r.top >= 0 && r.bottom <= window.innerHeight) { return; }
+  try {
+    target.scrollIntoView({ block: 'center', behavior: smooth ? 'smooth' : 'auto' });
+  } catch (e) {
+    /* 老浏览器不认参数对象 */
+    if (!smooth) {
+      window.scrollTo(0, window.pageYOffset + target.getBoundingClientRect().top - 120);
+    }
+  }
 }
 
 /* ============================================================
@@ -745,7 +833,7 @@ function renderTrend() {
    页面切换
    ============================================================ */
 
-function go(page) {
+function go(page, keepScroll) {
   state.page = page;
   var pages = document.querySelectorAll('.page');
   for (var i = 0; i < pages.length; i++) {
@@ -757,7 +845,8 @@ function go(page) {
   }
   if (page === 'list') { renderList(); }
   if (page === 'summary') { renderSummary(); }
-  window.scrollTo(0, 0);
+  /* 编辑完回流水时不能回到顶部，否则看不到刚改的那条 */
+  if (!keepScroll) { window.scrollTo(0, 0); }
 }
 
 /* ============================================================
@@ -1057,9 +1146,11 @@ elBtnSave.addEventListener('click', saveEntry);
 elBtnDelete.addEventListener('click', deleteEntry);
 
 elBtnCancel.addEventListener('click', function () {
+  var id = state.editingId;
+  var fromList = state.editFrom === 'list';
   exitEdit();
-  renderList();
   toast('\u5DF2\u53D6\u6D88\u7F16\u8F91');
+  if (fromList) { backToList(id, true); } else { renderList(); }
 });
 
 elAmount.addEventListener('keydown', function (e) {
@@ -1098,7 +1189,7 @@ elTxList.addEventListener('click', function (e) {
   for (var i = 0; i < db.transactions.length; i++) {
     if (db.transactions[i].id === id) { tx = db.transactions[i]; break; }
   }
-  if (tx) { enterEdit(tx); }
+  if (tx) { enterEdit(tx, 'list'); }
 });
 
 $('btnData').addEventListener('click', function () {
