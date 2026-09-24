@@ -1084,11 +1084,336 @@ function closeSheets() {
 }
 
 /* ============================================================
+   xlsx 读取
+   ------------------------------------------------------------
+   微信下载账单给的是 .xlsx，而浏览器不能直接把 xlsx 当表格读。
+   xlsx 的本质是一个 zip，里面装着 XML，所以这里只用两样东西
+   把它还原成 CSV：
+     1) 自己解 zip（只看中央目录，deflate / store 两种方式就够）；
+     2) 自己解 deflate（浏览器只有 DecompressionStream，
+        Safari 支持得晚，索性手写一个，几 KB 而已）。
+   不为了一个导入功能去引第三方库——这项目至今零依赖。
+   ============================================================ */
+
+/* ---------- zip ---------- */
+
+var ZIP_EOCD = 0x06054b50;
+var ZIP_CDIR = 0x02014b50;
+var ZIP_LOCAL = 0x04034b50;
+
+function zipRead(buf) {
+  var u8 = new Uint8Array(buf);
+  var dv = new DataView(buf);
+  /* EOCD 在文件末尾，但后面可能跟着最长 64KB 的注释，所以往前扫 */
+  var eocd = -1;
+  var floor = Math.max(0, u8.length - 22 - 65535);
+  for (var i = u8.length - 22; i >= floor; i--) {
+    if (dv.getUint32(i, true) === ZIP_EOCD) { eocd = i; break; }
+  }
+  if (eocd < 0) { throw new Error('不是 zip 容器'); }
+
+  var count = dv.getUint16(eocd + 10, true);
+  var at = dv.getUint32(eocd + 16, true);
+  var index = {};
+  for (var n = 0; n < count; n++) {
+    if (dv.getUint32(at, true) !== ZIP_CDIR) { break; }
+    var nlen = dv.getUint16(at + 28, true);
+    var elen = dv.getUint16(at + 30, true);
+    var clen = dv.getUint16(at + 32, true);
+    var name = '';
+    for (var k = 0; k < nlen; k++) { name += String.fromCharCode(u8[at + 46 + k]); }
+    index[name] = {
+      method: dv.getUint16(at + 10, true),
+      csize: dv.getUint32(at + 20, true),
+      usize: dv.getUint32(at + 24, true),
+      at: dv.getUint32(at + 42, true)
+    };
+    at += 46 + nlen + elen + clen;
+  }
+  return { raw: u8, dv: dv, index: index };
+}
+
+function zipEntry(zip, name) {
+  var e = zip.index[name];
+  if (!e) { return null; }
+  var dv = zip.dv;
+  if (dv.getUint32(e.at, true) !== ZIP_LOCAL) { throw new Error('zip 局部头损坏：' + name); }
+  var nlen = dv.getUint16(e.at + 26, true);
+  var elen = dv.getUint16(e.at + 28, true);
+  var from = e.at + 30 + nlen + elen;
+  var comp = zip.raw.subarray(from, from + e.csize);
+  if (e.method === 0) { return comp; }
+  if (e.method !== 8) { throw new Error('不支持的压缩方式 ' + e.method); }
+  return inflateDeflate(comp, e.usize);
+}
+
+function zipNeed(zip, name) {
+  var raw = zipEntry(zip, name);
+  if (!raw) { throw new Error('xlsx 里缺少 ' + name); }
+  return new TextDecoder('utf-8').decode(raw);
+}
+
+/* ---------- deflate（RFC1951，raw 流） ---------- */
+
+var DF_LEN_BASE = [3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258];
+var DF_LEN_EXT  = [0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0];
+var DF_DIST_BASE = [1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577];
+var DF_DIST_EXT  = [0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13];
+var DF_CLEN_ORDER = [16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15];
+
+/* 哈夫曼表：计数 + 按码长排好的符号表，解码时逐位走 */
+function dfTree(lengths) {
+  var max = 0;
+  var i;
+  for (i = 0; i < lengths.length; i++) { if (lengths[i] > max) { max = lengths[i]; } }
+  var count = new Array(max + 1);
+  for (i = 0; i <= max; i++) { count[i] = 0; }
+  for (i = 0; i < lengths.length; i++) { if (lengths[i]) { count[lengths[i]]++; } }
+  var offs = new Array(max + 2);
+  offs[0] = 0; offs[1] = 0;
+  for (i = 1; i <= max; i++) { offs[i + 1] = offs[i] + count[i]; }
+  var sym = new Array(lengths.length);
+  for (i = 0; i < lengths.length; i++) { if (lengths[i]) { sym[offs[lengths[i]]++] = i; } }
+  return { max: max, count: count, sym: sym };
+}
+
+function inflateDeflate(comp, usize) {
+  var out = new Uint8Array(usize > 0 ? usize : Math.max(comp.length * 4, 4096));
+  var bitBuf = 0;
+  var bitCnt = 0;
+  var src = 0;
+  var dst = 0;
+  var i;
+
+  function fill() {
+    while (bitCnt < 16 && src < comp.length) {
+      bitBuf |= comp[src++] << bitCnt;
+      bitCnt += 8;
+    }
+  }
+  function bits(n) {
+    fill();
+    var v = bitBuf & ((1 << n) - 1);
+    bitBuf >>>= n;
+    bitCnt -= n;
+    return v;
+  }
+  function grow(n) {
+    if (dst + n <= out.length) { return; }
+    var size = out.length;
+    while (size < dst + n) { size *= 2; }
+    var bigger = new Uint8Array(size);
+    bigger.set(out);
+    out = bigger;
+  }
+  function decode(tree) {
+    if (!tree.max) { throw new Error('空的哈夫曼表'); }
+    var code = 0, first = 0, index = 0;
+    for (var len = 1; len <= tree.max; len++) {
+      code |= bits(1);
+      var c = tree.count[len];
+      if (code - first < c) { return tree.sym[index + (code - first)]; }
+      index += c;
+      first = (first + c) << 1;
+      code <<= 1;
+    }
+    throw new Error('哈夫曼码非法');
+  }
+
+  var fixedL = null, fixedD = null;
+  var last = 0;
+  do {
+    last = bits(1);
+    var type = bits(2);
+    var hLit = null, hDist = null;
+
+    if (type === 0) {
+      /* 未压缩块：先丢掉当前字节里剩下的位 */
+      bitBuf = 0; bitCnt = 0;
+      var len = comp[src] | (comp[src + 1] << 8);
+      src += 4;
+      grow(len);
+      out.set(comp.subarray(src, src + len), dst);
+      src += len;
+      dst += len;
+      continue;
+    }
+    if (type === 1) {
+      if (!fixedL) {
+        var fl = new Array(288), fd = new Array(30);
+        for (i = 0; i < 144; i++) { fl[i] = 8; }
+        for (i = 144; i < 256; i++) { fl[i] = 9; }
+        for (i = 256; i < 280; i++) { fl[i] = 7; }
+        for (i = 280; i < 288; i++) { fl[i] = 8; }
+        for (i = 0; i < 30; i++) { fd[i] = 5; }
+        fixedL = dfTree(fl);
+        fixedD = dfTree(fd);
+      }
+      hLit = fixedL; hDist = fixedD;
+    } else if (type === 2) {
+      var hlc = bits(5) + 257;
+      var hdc = bits(5) + 1;
+      var hclc = bits(4) + 4;
+      var clens = new Array(19);
+      for (i = 0; i < 19; i++) { clens[i] = 0; }
+      for (i = 0; i < hclc; i++) { clens[DF_CLEN_ORDER[i]] = bits(3); }
+      var hc = dfTree(clens);
+      var all = new Array(hlc + hdc);
+      var at = 0;
+      while (at < hlc + hdc) {
+        var s = decode(hc);
+        if (s < 16) {
+          all[at++] = s;
+        } else {
+          var rep, val = 0;
+          if (s === 16) { val = all[at - 1]; rep = 3 + bits(2); }
+          else if (s === 17) { rep = 3 + bits(3); }
+          else { rep = 11 + bits(7); }
+          while (rep-- > 0 && at < hlc + hdc) { all[at++] = val; }
+        }
+      }
+      hLit = dfTree(all.slice(0, hlc));
+      hDist = dfTree(all.slice(hlc, hlc + hdc));
+    } else {
+      throw new Error('deflate 块类型非法');
+    }
+
+    for (;;) {
+      var sym = decode(hLit);
+      if (sym < 256) {
+        grow(1);
+        out[dst++] = sym;
+      } else if (sym === 256) {
+        break;
+      } else {
+        sym -= 257;
+        if (sym >= DF_LEN_BASE.length) { throw new Error('deflate 长度码非法'); }
+        var copyLen = DF_LEN_BASE[sym] + bits(DF_LEN_EXT[sym]);
+        var ds = decode(hDist);
+        var dist = DF_DIST_BASE[ds] + bits(DF_DIST_EXT[ds]);
+        grow(copyLen);
+        var back = dst - dist;
+        for (var j = 0; j < copyLen; j++) { out[dst++] = out[back + j]; }
+      }
+    }
+  } while (!last);
+
+  return out.subarray(0, dst);
+}
+
+/* ---------- xlsx → 行数组 ---------- */
+
+function xmlUnescape(s) {
+  return String(s)
+    .replace(/&#x([0-9a-fA-F]+);/g, function (_, h) { return String.fromCharCode(parseInt(h, 16)); })
+    .replace(/&#(\d+);/g, function (_, d) { return String.fromCharCode(Number(d)); })
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+/* 列引用 A1 / BC12 → 列号（0 起） */
+function xlsxColNum(ref) {
+  var n = 0;
+  for (var i = 0; i < ref.length; i++) {
+    var c = ref.charCodeAt(i);
+    if (c < 65 || c > 90) { break; }
+    n = n * 26 + (c - 64);
+  }
+  return n - 1;
+}
+
+/* sharedStrings.xml 里每个 <si> 可能被拆成好几个 <t>（富文本），拼起来 */
+function xlsxSharedStrings(xml) {
+  var out = [];
+  var re = /<si\b[^>]*>([\s\S]*?)<\/si>|<si\b[^>]*\/>/g;
+  var m;
+  while ((m = re.exec(xml))) {
+    var body = m[1] || '';
+    var tre = /<t\b[^>]*>([\s\S]*?)<\/t>|<t\b[^>]*\/>/g;
+    var text = '';
+    var tm;
+    while ((tm = tre.exec(body))) { text += tm[1] || ''; }
+    out.push(xmlUnescape(text));
+  }
+  return out;
+}
+
+/* 把第一个工作表读成「二维数组」，单元格值都还原成字符串。
+   日期先原样留着——Excel 里它就是个数字，不知道该列是不是日期，
+   换算放在知道列含义之后做（见 wxSerialToStamp）。 */
+function xlsxToRows(buf) {
+  var zip = zipRead(buf);
+  var week = zipEntry(zip, 'xl/sharedStrings.xml');
+  var strings = week ? xlsxSharedStrings(new TextDecoder('utf-8').decode(week)) : [];
+  var sheet = zipNeed(zip, 'xl/worksheets/sheet1.xml');
+
+  var rows = [];
+  var rowRe = /<row\b[^>]*>([\s\S]*?)<\/row>|<row\b[^>]*\/>/g;
+  var rm;
+  while ((rm = rowRe.exec(sheet))) {
+    var rowXml = rm[1] || '';
+    var cells = [];
+    var cellRe = /<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g;
+    var cm;
+    while ((cm = cellRe.exec(rowXml))) {
+      var attr = cm[1] || '';
+      var body = cm[2] || '';
+      var refM = /r="([A-Z]+)\d+"/.exec(attr);
+      var col = refM ? xlsxColNum(refM[1]) : cells.length;
+      var tM = /t="([^"]+)"/.exec(attr);
+      var t = tM ? tM[1] : '';
+      var val = '';
+
+      if (t === 'inlineStr') {
+        var ire = /<t\b[^>]*>([\s\S]*?)<\/t>/g;
+        var im;
+        var acc = '';
+        while ((im = ire.exec(body))) { acc += im[1]; }
+        val = xmlUnescape(acc);
+      } else {
+        var vM = /<v\b[^>]*>([\s\S]*?)<\/v>/.exec(body);
+        var raw = vM ? xmlUnescape(vM[1]) : '';
+        if (t === 's') { val = strings[Number(raw)] || ''; }
+        else { val = raw; }
+      }
+      while (cells.length < col) { cells.push(''); }
+      cells[col] = val;
+    }
+    rows.push(cells);
+  }
+  return rows;
+}
+
+/* Excel 日期序列号 → 本地时间戳。
+   1900 纪元，且 Excel 把 1900 当闰年（序列号 60 是那个不存在的 2/29），
+   所以 >= 60 的要先减掉一天。 */
+function xlsxSerialToMs(serial) {
+  var n = Number(serial);
+  if (!isFinite(n) || n <= 0) { return null; }
+  var days = Math.floor(n);
+  var frac = n - days;
+  if (days >= 60) { days -= 1; }
+  var utc = Date.UTC(1899, 11, 31) + days * 86400000 + Math.round(frac * 86400000);
+  var d = new Date(utc);
+  return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(),
+                  d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds()).getTime();
+}
+
+/* 时间列：可能是序列号（微信），也可能是 '2026-09-24 12:00:00' 这种文本（支付宝/CSV 版） */
+function xlsxTimeCell(v) {
+  var s = String(v == null ? '' : v).replace(/^\s+|\s+$/g, '');
+  if (!s) { return null; }
+  if (/^\d+(\.\d+)?$/.test(s)) { return xlsxSerialToMs(s); }
+  return parseBillTime(s);
+}
+
+/* ============================================================
    导入微信 / 支付宝账单
    ------------------------------------------------------------
    两家都不提供个人消费接口，只能从 App 里导出账单文件。
-   导出的是带引号的 CSV、GBK 编码、前面还有几行说明文字，
-   所以这里做三件事：认编码 → 找到表头 → 按列名取字段。
+   文件都是「前面几行说明 + 一张表」，所以这里做三件事：
+   认格式（CSV / xlsx）→ 找到表头 → 按列名取字段。
    账目 id 直接用「交易单号」，重复导入自然就不会重复记账。
    ============================================================ */
 
@@ -1133,33 +1458,6 @@ function decodeBillBytes(buf) {
   return new TextDecoder('utf-8').decode(bytes);
 }
 
-/* 按 CSV 规则切一行：字段可能被引号包着，里面还能有逗号 */
-function splitCsvLine(line) {
-  var out = [];
-  var cur = '';
-  var q = false;
-  for (var i = 0; i < line.length; i++) {
-    var ch = line.charAt(i);
-    if (q) {
-      if (ch === '"') {
-        if (line.charAt(i + 1) === '"') { cur += '"'; i++; }
-        else { q = false; }
-      } else { cur += ch; }
-    } else if (ch === '"') {
-      q = true;
-    } else if (ch === ',') {
-      out.push(cur);
-      cur = '';
-    } else {
-      cur += ch;
-    }
-  }
-  out.push(cur);
-  var res = [];
-  for (var j = 0; j < out.length; j++) { res.push(out[j].replace(/^\s+|\s+$/g, '')); }
-  return res;
-}
-
 function pickCol(cols, names) {
   for (var n = 0; n < names.length; n++) {
     for (var i = 0; i < cols.length; i++) {
@@ -1185,45 +1483,99 @@ function parseBillTime(s) {
 
 function pad2n(n) { return (n < 10 ? '0' : '') + n; }
 
-function parseBillText(text) {
+/* CSV 文本 → 行数组（空行丢掉）。
+   支付宝导出时会在「交易订单号」和「商家订单号」后面各粘一个制表符
+   （`...4718\t,39202...\t,,\n`）。那个 Tab 是导出程序留下的排版垃圾，
+   如果把它也当分隔符，后面所有列都会整体错位一格（金额会跑到支付方式上）。
+   所以这里只做一件事：把紧贴在逗号前的 Tab 去掉，列序保持和表头一致。 */
+function splitCsvLine(line) {
+  var out = [];
+  var cur = '';
+  var q = false;
+  var src = line;
+  for (var i = 0; i < src.length; i++) {
+    var ch = src.charAt(i);
+    if (q) {
+      if (ch === '"') {
+        if (src.charAt(i + 1) === '"') { cur += '"'; i++; }
+        else { q = false; }
+      } else { cur += ch; }
+    } else if (ch === '"') {
+      q = true;
+    } else if (ch === ',') {
+      out.push(cur);
+      cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  out.push(cur);
+  var res = [];
+  for (var j = 0; j < out.length; j++) {
+    /* 除空白外还要清掉零宽字符，否则同样的订单号比不出相等、去重会失效 */
+    res.push(out[j].replace(/[\t\u200B-\u200D\uFEFF\u2060]/g, '').replace(/^\s+|\s+$/g, ''));
+  }
+  return res;
+}
+
+function csvToRows(text) {
   var lines = String(text).split(/\r\n|\n|\r/);
+  var rows = [];
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    if (!line || !line.replace(/[,\s"]/g, '')) { continue; }
+    rows.push(splitCsvLine(line));
+  }
+  return rows;
+}
+
+/* 不管来的是一张二维表（xlsx）还是一段 CSV 文本，都归成同一个结构再往下走。
+   两个来源的差别只有一处：xlsx 的时间是序列号，要换算。 */
+function parseBillTable(rows, serialTime) {
   var head = null;
-  var limit = Math.min(lines.length, 60);
+  var limit = Math.min(rows.length, 60);
   for (var i = 0; i < limit; i++) {
-    var cols = splitCsvLine(lines[i]);
-    var joined = cols.join('|');
-    if (joined.indexOf('交易时间') >= 0 && joined.indexOf('交易对方') >= 0) {
-      head = { kind: 'wx', at: i, cols: cols };
+    var joined = rows[i].join('|');
+    /* 先认支付宝：「交易订单号 + 收/支」是它独有的。注意支付宝的列名是
+       「交易订单号」而不是「交易号」，用「交易号」去 indexOf 永远找不到。
+       顺序也不能反过来——支付宝表头里同时有「交易时间」和「交易对方」，
+       先认微信的话会把支付宝当微信，列名全部对歪。 */
+    if (joined.indexOf('交易订单号') >= 0 && joined.indexOf('收/支') >= 0) {
+      head = { kind: 'ali', at: i, cols: rows[i] };
       break;
     }
-    if (joined.indexOf('交易号') >= 0 && joined.indexOf('收/支') >= 0) {
-      head = { kind: 'ali', at: i, cols: cols };
+    if (joined.indexOf('交易时间') >= 0 && joined.indexOf('交易对方') >= 0) {
+      head = { kind: 'wx', at: i, cols: rows[i] };
       break;
     }
   }
   if (!head) { return { ok: false, reason: 'noHeader' }; }
 
-  var cTime   = pickCol(head.cols, head.kind === 'wx' ? ['交易时间'] : ['付款时间', '交易创建时间', '交易时间']);
+  var isWx = head.kind === 'wx';
+  var cTime   = pickCol(head.cols, isWx ? ['交易时间'] : ['付款时间', '交易创建时间', '交易时间']);
   var cDir    = pickCol(head.cols, ['收/支']);
-  var cAmt    = pickCol(head.cols, head.kind === 'wx' ? ['金额(元)', '金额'] : ['金额（元）', '金额']);
+  /* 金额列要认全「金额（元）」「金额(元)」，否则会落到「成功退款（元）」上 */
+  var cAmt    = pickCol(head.cols, isWx ? ['金额(元)', '金额（元）', '金额']
+                                        : ['金额（元）', '金额(元)', '金额']);
   var cPeer   = pickCol(head.cols, ['交易对方']);
-  var cGoods  = pickCol(head.cols, head.kind === 'wx' ? ['商品'] : ['商品名称', '商品']);
-  var cStatus = pickCol(head.cols, head.kind === 'wx' ? ['当前状态'] : ['交易状态']);
-  var cKind   = pickCol(head.cols, head.kind === 'wx' ? ['交易类型'] : ['类型']);
-  var cOrder  = pickCol(head.cols, head.kind === 'wx' ? ['交易单号'] : ['交易号']);
+  var cGoods  = pickCol(head.cols, isWx ? ['商品'] : ['商品说明', '商品名称', '商品']);
+  var cStatus = pickCol(head.cols, isWx ? ['当前状态'] : ['交易状态']);
+  var cKind   = pickCol(head.cols, isWx ? ['交易类型'] : ['交易分类', '类型']);
+  /* 支付宝叫「交易订单号」，微信叫「交易单号」，两边都列上 */
+  var cOrder  = pickCol(head.cols, isWx ? ['交易单号'] : ['交易订单号', '交易号']);
   var cNote   = pickCol(head.cols, ['备注']);
 
-  var rows = [];
+  var out = [];
   var skip = { noCount: 0, refund: 0, closed: 0, invalid: 0 };
 
-  for (var r = head.at + 1; r < lines.length; r++) {
-    if (!lines[r] || !lines[r].replace(/[,\s"]/g, '')) { continue; }
-    var f = splitCsvLine(lines[r]);
-    if (f.length < 3) { continue; }
+  for (var r = head.at + 1; r < rows.length; r++) {
+    var f = rows[r];
+    if (!f || f.length < 3) { continue; }
+    if (!f.join('').replace(/\s/g, '')) { continue; }
 
-    var ts = parseBillTime(fieldOf(f, cTime));
+    var ts = serialTime ? xlsxTimeCell(fieldOf(f, cTime)) : parseBillTime(fieldOf(f, cTime));
     var dir = fieldOf(f, cDir);
-    var amtCents = parseAmountToCents(fieldOf(f, cAmt).replace(/[¥￥,\s]/g, ''));
+    var amtCents = parseAmountToCents(String(fieldOf(f, cAmt)).replace(/[¥￥,\s]/g, ''));
     if (!ts || !amtCents) { skip.invalid++; continue; }
 
     /* 「不计收支」= 转账、理财、还款这类，不是消费，直接不要 */
@@ -1247,8 +1599,8 @@ function parseBillText(text) {
     var type = dir === '收入' ? 'income' : 'expense';
     var orderNo = fieldOf(f, cOrder);
 
-    rows.push({
-      id: (head.kind === 'wx' ? 'wx:' : 'ali:') + (orderNo || (ts + '-' + amtCents)),
+    out.push({
+      id: (isWx ? 'wx:' : 'ali:') + (orderNo || (ts + '-' + amtCents)),
       type: type,
       amount: amtCents / 100,
       categoryId: guessCategory(peer + ' ' + goods + ' ' + kind + ' ' + extra, type),
@@ -1259,7 +1611,16 @@ function parseBillText(text) {
     });
   }
 
-  return { ok: true, kind: head.kind, rows: rows, skip: skip, total: lines.length };
+  return { ok: true, kind: head.kind, rows: out, skip: skip, total: rows.length };
+}
+
+function parseBillText(text) {
+  return parseBillTable(csvToRows(text), false);
+}
+
+/* 微信给的是 xlsx：先还原成二维表，再走同一套解析 */
+function parseBillXlsx(buf) {
+  return parseBillTable(xlsxToRows(buf), true);
 }
 
 /* 待用户确认的导入结果 */
@@ -1270,21 +1631,26 @@ function showBillResult(html) {
 }
 
 function previewBillFile(buf) {
-  var text;
-  try { text = decodeBillBytes(buf); }
-  catch (e) { showBillResult('<div class="notice is-warn">这个文件读不出来，确认是账单 CSV 吗</div>'); return; }
+  /* 微信给的是 .xlsx（zip 容器），先看文件头；不是 zip 才当文本解 */
+  var bytes = new Uint8Array(buf);
+  var isZip = bytes.length > 3 && bytes[0] === 0x50 && bytes[1] === 0x4B &&
+              (bytes[2] === 0x03 || bytes[2] === 0x05 || bytes[2] === 0x07);
 
   var res;
-  try { res = parseBillText(text); }
-  catch (e) {
-    showBillResult('<div class="notice is-warn">解析出错了：' + esc(e.message) + '</div>');
+  try {
+    res = isZip ? parseBillXlsx(buf) : parseBillText(decodeBillBytes(buf));
+  } catch (e) {
+    showBillResult('<div class="notice is-warn">' + (isZip ? 'xlsx 解析出错：' : '解析出错：') +
+      esc(e.message) + '</div>');
+    elBtnBillOk.classList.add('is-hidden');
+    billPending = null;
     return;
   }
 
   if (!res.ok) {
-    showBillResult('<div class="notice is-warn">没找到账单表头。请确认选的是<strong>交易账单 CSV</strong>——' +
-      '如果你导出的是 Excel（.xlsx / .xls），先用 Excel 或 WPS 打开它，' +
-      '「另存为 → CSV UTF-8」再导入。</div>');
+    showBillResult('<div class="notice is-warn">没找到账单表头。请确认选的是<strong>对账用的账单文件</strong>——' +
+      '微信要「用于个人对账」的账单（下载下来是 xlsx），支付宝要「开具交易流水证明」的 CSV。' +
+      '如果你手上的 Excel 里已经看不到「交易时间 / 交易对方」这些列，那多半是截图或汇总表，不是明细。</div>');
     elBtnBillOk.classList.add('is-hidden');
     billPending = null;
     return;
@@ -1522,13 +1888,6 @@ $('btnBillConfirm').addEventListener('click', applyBillImport);
 elBillFile.addEventListener('change', function () {
   var file = elBillFile.files && elBillFile.files[0];
   if (!file) { return; }
-  if (/\.(xlsx|xls)$/i.test(file.name)) {
-    showBillResult('<div class="notice is-warn">这是 Excel 文件，程序不直接读。' +
-      '用 Excel 或 WPS 打开它，「另存为 → CSV UTF-8」之后再导入即可。</div>');
-    elBtnBillOk.classList.add('is-hidden');
-    billPending = null;
-    return;
-  }
   billPending = null;
   elBtnBillOk.classList.add('is-hidden');
   showBillResult('<div class="notice">正在读 ' + esc(file.name) + ' …</div>');
