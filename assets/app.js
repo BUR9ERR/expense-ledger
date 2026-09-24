@@ -57,6 +57,10 @@ var elTabbar     = $('tabbar');
 var elMask       = $('mask');
 var elSheetData  = $('sheetData');
 var elSheetImport= $('sheetImport');
+var elSheetBill  = $('sheetBill');
+var elBillFile   = $('billFile');
+var elBillResult = $('billResult');
+var elBtnBillOk  = $('btnBillConfirm');
 var elBackupNote = $('backupNotice');
 var elToast      = $('toast');
 var elFileInput  = $('fileInput');
@@ -1076,6 +1080,297 @@ function closeSheets() {
   elMask.classList.add('is-hidden');
   elSheetData.classList.add('is-hidden');
   elSheetImport.classList.add('is-hidden');
+  elSheetBill.classList.add('is-hidden');
+}
+
+/* ============================================================
+   导入微信 / 支付宝账单
+   ------------------------------------------------------------
+   两家都不提供个人消费接口，只能从 App 里导出账单文件。
+   导出的是带引号的 CSV、GBK 编码、前面还有几行说明文字，
+   所以这里做三件事：认编码 → 找到表头 → 按列名取字段。
+   账目 id 直接用「交易单号」，重复导入自然就不会重复记账。
+   ============================================================ */
+
+/* 猜分类用的关键词。命中越靠前的规则优先，所以把具体的放前面。 */
+var BILL_RULES = [
+  ['expense', /美团|饿了么|外卖|肯德基|麦当劳|星巴克|瑞幸|蜜雪|餐饮|餐厅|火锅|烧烤|奶茶|咖啡|面馆|食堂|food/i, 'food'],
+  ['expense', /滴滴|出行|打车|出租车|地铁|公交|轻轨|单车|加油|停车|高速|铁路|12306|车票|机票|航空|充电桩/i, 'traffic'],
+  ['expense', /淘宝|天猫|京东|拼多多|唯品会|苏宁|商城|服饰|优衣库|鞋|包/i, 'shop'],
+  ['expense', /房租|物业|水费|电费|燃气|取暖|宽带|电信|移动|联通|家电|家具/i, 'home'],
+  ['expense', /电影|影院|游戏|腾讯视频|爱奇艺|优酷|网易云|音乐|会员|门票|景区|旅游|KTV|剧本/i, 'fun'],
+  ['expense', /医院|药房|药店|诊所|体检|医疗|挂号|口腔|眼科/i, 'health'],
+  ['expense', /超市|便利店|全家|罗森|711|7-11|日用|洗护|纸巾|清洁|家居/i, 'daily'],
+  ['expense', /书店|图书|当当|培训|课程|教育|网课|学费/i, 'study'],
+  ['expense', /红包|转账|礼金|份子|随礼/i, 'social'],
+  ['income',  /工资|薪资|薪水|代发/i, 'salary'],
+  ['income',  /奖金|绩效|年终|提成/i, 'bonus'],
+  ['income',  /兼职|稿费|报酬|接单/i, 'parttime'],
+  ['income',  /利息|理财|基金|分红|收益|证券/i, 'invest'],
+  ['income',  /红包|转账|礼金|退款/i, 'gift']
+];
+
+function guessCategory(text, type) {
+  var t = String(text || '');
+  for (var i = 0; i < BILL_RULES.length; i++) {
+    if (BILL_RULES[i][0] === type && BILL_RULES[i][1].test(t)) { return BILL_RULES[i][2]; }
+  }
+  return type === 'income' ? 'other_i' : 'other_e';
+}
+
+/* 账单是 GBK 编码，直接按 UTF-8 读会全是乱码。
+   先看有没有 BOM，再用「严格 UTF-8 解码失败就转 GBK」来判断。 */
+function decodeBillBytes(buf) {
+  var bytes = new Uint8Array(buf);
+  if (bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+    return new TextDecoder('utf-8').decode(bytes.subarray(3));
+  }
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch (e) {
+    try { return new TextDecoder('gbk').decode(bytes); } catch (e2) { /* 退回去 */ }
+  }
+  return new TextDecoder('utf-8').decode(bytes);
+}
+
+/* 按 CSV 规则切一行：字段可能被引号包着，里面还能有逗号 */
+function splitCsvLine(line) {
+  var out = [];
+  var cur = '';
+  var q = false;
+  for (var i = 0; i < line.length; i++) {
+    var ch = line.charAt(i);
+    if (q) {
+      if (ch === '"') {
+        if (line.charAt(i + 1) === '"') { cur += '"'; i++; }
+        else { q = false; }
+      } else { cur += ch; }
+    } else if (ch === '"') {
+      q = true;
+    } else if (ch === ',') {
+      out.push(cur);
+      cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  out.push(cur);
+  var res = [];
+  for (var j = 0; j < out.length; j++) { res.push(out[j].replace(/^\s+|\s+$/g, '')); }
+  return res;
+}
+
+function pickCol(cols, names) {
+  for (var n = 0; n < names.length; n++) {
+    for (var i = 0; i < cols.length; i++) {
+      if (cols[i] === names[n] || cols[i].indexOf(names[n]) === 0) { return i; }
+    }
+  }
+  return -1;
+}
+
+function fieldOf(row, idx) {
+  return idx >= 0 && idx < row.length ? row[idx] : '';
+}
+
+function parseBillTime(s) {
+  var m = /(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/.exec(String(s));
+  if (!m) { return null; }
+  var y = Number(m[1]);
+  var mo = Number(m[2]);
+  var d = Number(m[3]);
+  if (!y || !mo || !d || mo > 12 || d > 31) { return null; }
+  return new Date(y, mo - 1, d, Number(m[4] || 0), Number(m[5] || 0), Number(m[6] || 0)).getTime();
+}
+
+function pad2n(n) { return (n < 10 ? '0' : '') + n; }
+
+function parseBillText(text) {
+  var lines = String(text).split(/\r\n|\n|\r/);
+  var head = null;
+  var limit = Math.min(lines.length, 60);
+  for (var i = 0; i < limit; i++) {
+    var cols = splitCsvLine(lines[i]);
+    var joined = cols.join('|');
+    if (joined.indexOf('交易时间') >= 0 && joined.indexOf('交易对方') >= 0) {
+      head = { kind: 'wx', at: i, cols: cols };
+      break;
+    }
+    if (joined.indexOf('交易号') >= 0 && joined.indexOf('收/支') >= 0) {
+      head = { kind: 'ali', at: i, cols: cols };
+      break;
+    }
+  }
+  if (!head) { return { ok: false, reason: 'noHeader' }; }
+
+  var cTime   = pickCol(head.cols, head.kind === 'wx' ? ['交易时间'] : ['付款时间', '交易创建时间', '交易时间']);
+  var cDir    = pickCol(head.cols, ['收/支']);
+  var cAmt    = pickCol(head.cols, head.kind === 'wx' ? ['金额(元)', '金额'] : ['金额（元）', '金额']);
+  var cPeer   = pickCol(head.cols, ['交易对方']);
+  var cGoods  = pickCol(head.cols, head.kind === 'wx' ? ['商品'] : ['商品名称', '商品']);
+  var cStatus = pickCol(head.cols, head.kind === 'wx' ? ['当前状态'] : ['交易状态']);
+  var cKind   = pickCol(head.cols, head.kind === 'wx' ? ['交易类型'] : ['类型']);
+  var cOrder  = pickCol(head.cols, head.kind === 'wx' ? ['交易单号'] : ['交易号']);
+  var cNote   = pickCol(head.cols, ['备注']);
+
+  var rows = [];
+  var skip = { noCount: 0, refund: 0, closed: 0, invalid: 0 };
+
+  for (var r = head.at + 1; r < lines.length; r++) {
+    if (!lines[r] || !lines[r].replace(/[,\s"]/g, '')) { continue; }
+    var f = splitCsvLine(lines[r]);
+    if (f.length < 3) { continue; }
+
+    var ts = parseBillTime(fieldOf(f, cTime));
+    var dir = fieldOf(f, cDir);
+    var amtCents = parseAmountToCents(fieldOf(f, cAmt).replace(/[¥￥,\s]/g, ''));
+    if (!ts || !amtCents) { skip.invalid++; continue; }
+
+    /* 「不计收支」= 转账、理财、还款这类，不是消费，直接不要 */
+    if (dir !== '支出' && dir !== '收入') { skip.noCount++; continue; }
+
+    var status = fieldOf(f, cStatus);
+    var kind = fieldOf(f, cKind);
+    if (/退款|退票/.test(status) || /退款|退票/.test(kind)) { skip.refund++; continue; }
+    if (/未支付|已关闭|交易关闭|已撤销|失败|已取消/.test(status)) { skip.closed++; continue; }
+
+    var peer = fieldOf(f, cPeer);
+    var goods = fieldOf(f, cGoods);
+    var extra = fieldOf(f, cNote);
+    var noteParts = [];
+    if (peer && peer !== '/') { noteParts.push(peer); }
+    if (goods && goods !== '/' && goods !== peer) { noteParts.push(goods); }
+    if (!noteParts.length && extra) { noteParts.push(extra); }
+
+    var d = new Date(ts);
+    var dateStr = d.getFullYear() + '-' + pad2n(d.getMonth() + 1) + '-' + pad2n(d.getDate());
+    var type = dir === '收入' ? 'income' : 'expense';
+    var orderNo = fieldOf(f, cOrder);
+
+    rows.push({
+      id: (head.kind === 'wx' ? 'wx:' : 'ali:') + (orderNo || (ts + '-' + amtCents)),
+      type: type,
+      amount: amtCents / 100,
+      categoryId: guessCategory(peer + ' ' + goods + ' ' + kind + ' ' + extra, type),
+      date: dateStr,
+      note: noteParts.join(' · ').slice(0, 40),
+      createdAt: ts,
+      updatedAt: ts
+    });
+  }
+
+  return { ok: true, kind: head.kind, rows: rows, skip: skip, total: lines.length };
+}
+
+/* 待用户确认的导入结果 */
+var billPending = null;
+
+function showBillResult(html) {
+  elBillResult.innerHTML = html;
+}
+
+function previewBillFile(buf) {
+  var text;
+  try { text = decodeBillBytes(buf); }
+  catch (e) { showBillResult('<div class="notice is-warn">这个文件读不出来，确认是账单 CSV 吗</div>'); return; }
+
+  var res;
+  try { res = parseBillText(text); }
+  catch (e) {
+    showBillResult('<div class="notice is-warn">解析出错了：' + esc(e.message) + '</div>');
+    return;
+  }
+
+  if (!res.ok) {
+    showBillResult('<div class="notice is-warn">没找到账单表头。请确认选的是<strong>交易账单 CSV</strong>——' +
+      '如果你导出的是 Excel（.xlsx / .xls），先用 Excel 或 WPS 打开它，' +
+      '「另存为 → CSV UTF-8」再导入。</div>');
+    elBtnBillOk.classList.add('is-hidden');
+    billPending = null;
+    return;
+  }
+
+  var have = {};
+  db.transactions.forEach(function (t) { have[t.id] = true; });
+
+  var fresh = [];
+  var dup = 0;
+  var expCents = 0;
+  var incCents = 0;
+  res.rows.forEach(function (t) {
+    if (have[t.id]) { dup++; return; }
+    fresh.push(t);
+    if (t.type === 'income') { incCents += toCents(t.amount); } else { expCents += toCents(t.amount); }
+  });
+
+  billPending = fresh;
+
+  var label = res.kind === 'wx' ? '微信支付账单' : '支付宝账单';
+  var html = '<div class="notice' + (fresh.length ? ' is-ok' : '') + '">' +
+    '认出来了：<b>' + label + '</b>，共 ' + res.rows.length + ' 笔可用记录。<br>' +
+    '其中 <b>' + fresh.length + '</b> 笔是要新增的' +
+    (dup ? '，<b>' + dup + '</b> 笔已经记过、会跳过' : '') + '。<br>' +
+    '新增的合计：支出 <b>' + fmtMoney(expCents) + '</b>　收入 <b>' + fmtMoney(incCents) + '</b>' +
+    '</div>';
+
+  var skipped = [];
+  if (res.skip.noCount) { skipped.push('转账/理财等不计收支 ' + res.skip.noCount + ' 笔'); }
+  if (res.skip.refund) { skipped.push('退款 ' + res.skip.refund + ' 笔'); }
+  if (res.skip.closed) { skipped.push('未成功 ' + res.skip.closed + ' 笔'); }
+  if (res.skip.invalid) { skipped.push('格式不完整 ' + res.skip.invalid + ' 笔'); }
+  if (skipped.length) {
+    html += '<div class="notice">已忽略：' + skipped.join('、') + '。这些不是消费，或原交易已经记过。</div>';
+  }
+
+  /* 手工记过的账没有交易单号，和账单对不上，所以按「日期 + 金额」提示一下。
+     只提示不自动跳过——万一是两笔真的同价消费，替你删了反而更糟。 */
+  var sameKey = {};
+  db.transactions.forEach(function (t) { sameKey[t.date + '|' + toCents(t.amount)] = true; });
+  var maybeDup = fresh.filter(function (t) { return sameKey[t.date + '|' + toCents(t.amount)]; });
+  if (maybeDup.length) {
+    var eg = maybeDup.slice(0, 3).map(function (t) {
+      return t.date.slice(5) + ' ' + fmtMoney(toCents(t.amount));
+    }).join('、');
+    html += '<div class="notice is-warn">注意：其中 <b>' + maybeDup.length + '</b> 笔的日期和金额，与已记录的完全相同（' +
+      esc(eg) + (maybeDup.length > 3 ? ' 等' : '') + '），可能是你之前手工记过的。' +
+      '程序判断不了是不是同一笔，所以照常导入——导完核对一下，重复的删掉就行。</div>';
+  }
+
+  if (fresh.length) {
+    var show = fresh.slice(0, 8);
+    html += '<div class="bill-preview"><div class="bill-head">前 ' + show.length + ' 笔预览</div>';
+    show.forEach(function (t) {
+      var c = categoryById(t.categoryId);
+      html += '<div class="bill-row">' +
+        '<span>' + esc(t.date.slice(5)) + ' ' + esc(c.icon + ' ' + c.name) + '</span>' +
+        '<span class="bill-note">' + esc(t.note || '（无说明）') + '</span>' +
+        '<b class="' + (t.type === 'income' ? 'is-income' : 'is-expense') + '">' +
+        (t.type === 'income' ? '+' : '-') + fmtMoney(toCents(t.amount)) + '</b></div>';
+    });
+    html += '<div class="bill-foot">分类是按「交易对方 / 商品」猜的，导入后可以点开逐条改。</div></div>';
+  }
+
+  showBillResult(html);
+  if (fresh.length) { elBtnBillOk.classList.remove('is-hidden'); }
+  else { elBtnBillOk.classList.add('is-hidden'); }
+}
+
+function applyBillImport() {
+  if (!billPending || !billPending.length) { return; }
+  var n = 0;
+  billPending.forEach(function (t) {
+    db.transactions.push(t);
+    n++;
+  });
+  billPending = null;
+  saveDB();
+  renderCategories();
+  renderList();
+  renderSummary();
+  refreshBackupNotice();
+  elBtnBillOk.classList.add('is-hidden');
+  showBillResult('<div class="notice is-ok">已导入 ' + n + ' 笔。到「流水」页就能看到，分类不对的点开改一下就行。</div>');
+  toast('已导入 ' + n + ' 笔账单');
 }
 
 /* 网页端把服务停掉之后：锁住界面、提示怎么办，并盯着服务什么时候回来 */
@@ -1210,6 +1505,39 @@ $('btnImport').addEventListener('click', function () {
 });
 
 $('btnClear').addEventListener('click', clearAll);
+
+/* 导入账单 */
+$('btnImportBill').addEventListener('click', function () {
+  closeSheets();
+  billPending = null;
+  elBillResult.innerHTML = '';
+  elBtnBillOk.classList.add('is-hidden');
+  elBillFile.value = '';
+  openSheet(elSheetBill);
+});
+
+$('btnCloseBill').addEventListener('click', closeSheets);
+$('btnBillConfirm').addEventListener('click', applyBillImport);
+
+elBillFile.addEventListener('change', function () {
+  var file = elBillFile.files && elBillFile.files[0];
+  if (!file) { return; }
+  if (/\.(xlsx|xls)$/i.test(file.name)) {
+    showBillResult('<div class="notice is-warn">这是 Excel 文件，程序不直接读。' +
+      '用 Excel 或 WPS 打开它，「另存为 → CSV UTF-8」之后再导入即可。</div>');
+    elBtnBillOk.classList.add('is-hidden');
+    billPending = null;
+    return;
+  }
+  billPending = null;
+  elBtnBillOk.classList.add('is-hidden');
+  showBillResult('<div class="notice">正在读 ' + esc(file.name) + ' …</div>');
+  var reader = new FileReader();
+  reader.onload = function () { previewBillFile(reader.result); };
+  reader.onerror = function () { showBillResult('<div class="notice is-warn">文件读取失败</div>'); };
+  reader.readAsArrayBuffer(file);
+  elBillFile.value = '';
+});
 
 elFileInput.addEventListener('change', function () {
   var file = elFileInput.files && elFileInput.files[0];
