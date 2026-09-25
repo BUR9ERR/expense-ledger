@@ -17,6 +17,7 @@
   --warn-line:#F0DFB0;
   --warn-text:#8A6A12;
   --accent:#1B1B19;
+  --ease-out:cubic-bezier(.23,1,.32,1);
   --radius:14px;
   --shadow:0 1px 2px rgba(0,0,0,.04),0 10px 30px rgba(0,0,0,.06);
   --safe-b:env(safe-area-inset-bottom,0px);
@@ -81,9 +82,10 @@ button{font-family:inherit;color:inherit}
   cursor:pointer;
   font-size:15px;
   padding:0;
+  transition:background .15s,transform .16s var(--ease-out);
 }
 
-.icon-btn:active{background:rgba(0,0,0,.06)}
+.icon-btn:active{background:rgba(0,0,0,.06);transform:scale(.94)}
 
 .topbar-right{display:flex;align-items:center;gap:8px}
 
@@ -429,8 +431,9 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
   font-size:13px;
   color:var(--muted);
   cursor:pointer;
-  transition:background .15s,color .15s,border-color .15s;
+  transition:background .15s,color .15s,border-color .15s,transform .16s var(--ease-out);
 }
+.chip:active{transform:scale(.97)}
 
 .chip.is-active{background:var(--text);color:#fff;border-color:var(--text)}
 
@@ -592,7 +595,8 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 .rank-val b{color:var(--text);font-weight:600}
 
 .rank-bar{height:4px;border-radius:2px;background:#F0F0EB;overflow:hidden}
-.rank-bar i{display:block;height:100%;border-radius:2px;transition:width .45s ease}
+.rank-bar i{display:block;height:100%;border-radius:2px;transform:scaleX(0);transform-origin:left center;transition:transform .5s var(--ease-out)}
+.rank-list.is-in .rank-bar i{transform:scaleX(1)}
 
 .trend{
   background:var(--card);
@@ -621,8 +625,11 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
   border-radius:5px 5px 0 0;
   background:#E4E4DE;
   min-height:2px;
-  transition:height .45s ease;
+  transform:scaleY(0);
+  transform-origin:center bottom;
+  transition:transform .5s var(--ease-out);
 }
+.trend.is-in .trend-bar{transform:scaleY(1)}
 
 .trend-bar.is-cur{background:var(--expense)}
 
@@ -655,9 +662,10 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
   color:var(--faint);
   cursor:pointer;
   font-size:11px;
-  transition:color .15s;
+  transition:color .15s,transform .16s var(--ease-out);
 }
 
+.tab:active{transform:scale(.96)}
 .tab.is-active{color:var(--text);font-weight:600}
 
 .sheet-mask{
@@ -970,4 +978,10 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
   .date-row .input{width:100%}
   .quick-dates{width:100%}
   .quick-dates button{padding:10px 0}
+}
+
+/* 系统开了「减弱动态效果」时：去掉位移类动效，只保留必要的淡入淡出 */
+@media (prefers-reduced-motion: reduce){
+  .rank-bar i,.trend-bar{transform:none;transition:none}
+  .tab:active,.chip:active,.icon-btn:active{transform:none}
 }

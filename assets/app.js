@@ -851,6 +851,7 @@ function renderSummary() {
 
 function renderRank(expenseList, totalCents) {
   if (!expenseList.length) {
+    elRankList.classList.remove('is-in');
     elRankList.innerHTML = '<div class="empty" style="padding:24px 8px">\u8FD9\u4E2A\u6708\u8FD8\u6CA1\u6709\u652F\u51FA</div>';
     return;
   }
@@ -878,6 +879,11 @@ function renderRank(expenseList, totalCents) {
       '</div>';
   });
   elRankList.innerHTML = html;
+  /* 条形「生长」入场：先归零（scaleX(0)），强制回流后再加 is-in 放行过渡。
+     直接建好就加类的话，浏览器会把初始态和终态合并成一次绘制，动画就没了。 */
+  elRankList.classList.remove('is-in');
+  void elRankList.offsetWidth;
+  elRankList.classList.add('is-in');
 }
 
 function renderTrend() {
@@ -911,6 +917,9 @@ function renderTrend() {
 
   elTrendChart.innerHTML = '<div class="trend-bars">' + bars + '</div>' +
                            '<div class="trend-label">' + labels + '</div>';
+  elTrendChart.classList.remove('is-in');
+  void elTrendChart.offsetWidth;
+  elTrendChart.classList.add('is-in');
 }
 
 /* ============================================================
