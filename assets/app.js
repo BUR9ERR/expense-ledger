@@ -41,6 +41,10 @@ var elBtnSave    = $('btnSave');
 var elBtnDelete  = $('btnDelete');
 var elBtnCancel  = $('btnCancelEdit');
 var elMonthLabel = $('monthLabel');
+var elMonthText  = $('monthText');
+var elMonthPicker= $('monthPicker');
+var elMpYear     = $('mpYear');
+var elMpGrid     = $('mpGrid');
 var elFilterChips= $('filterChips');
 var elListTotal  = $('listTotal');
 var elTxList     = $('txList');
@@ -597,7 +601,8 @@ function monthTx(key) {
 
 function renderList() {
   var p = state.listMonth.split('-');
-  elMonthLabel.textContent = p[0] + ' \u5E74 ' + Number(p[1]) + ' \u6708';
+  /* 只改文字那一段：整个按钮一起改会把里面「可点开选择器」的小箭头也清掉 */
+  (elMonthText || elMonthLabel).textContent = p[0] + ' \u5E74 ' + Number(p[1]) + ' \u6708';
 
   var monthAll = monthTx(state.listMonth);
   var list = state.listFilter === 'all'
@@ -664,6 +669,58 @@ function shiftMonth(n) {
   if (m < 1) { m = 12; y -= 1; }
   if (m > 12) { m = 1; y += 1; }
   state.listMonth = y + '-' + pad2(m);
+  renderList();
+}
+
+/* ---------- 年月快速选择（点流水页顶部的「2026 年 9 月」直接挑月份） ---------- */
+
+/* 选择器里正在翻看的年份，跟 state.listMonth 分开：
+   用户可以来回翻年看哪个月有账，选中了才改 listMonth。 */
+var mpYear = 0;
+
+function renderMonthPicker() {
+  if (!elMpGrid) { return; }
+  elMpYear.textContent = mpYear + ' \u5E74';
+
+  /* 哪几个月记过账？有账的格子加个小圆点，一眼看出该往哪跳 */
+  var hasData = {};
+  db.transactions.forEach(function (t) {
+    var k = String(t.date).slice(0, 7);
+    if (k.slice(0, 4) === String(mpYear)) { hasData[Number(k.slice(5, 7))] = true; }
+  });
+
+  var nowKey = currentMonthKey();
+  var html = '';
+  for (var m = 1; m <= 12; m++) {
+    var key = mpYear + '-' + pad2(m);
+    var cls = 'mp-cell';
+    if (hasData[m]) { cls += ' has-data'; }
+    if (key === nowKey) { cls += ' is-now'; }
+    if (key === state.listMonth) { cls += ' is-active'; }
+    html += '<button type="button" class="' + cls + '" data-ym="' + key + '">' +
+            m + ' \u6708</button>';
+  }
+  elMpGrid.innerHTML = html;
+}
+
+function openMonthPicker() {
+  if (!elMonthPicker) { return; }
+  mpYear = Number(state.listMonth.split('-')[0]);
+  renderMonthPicker();
+  elMonthPicker.classList.remove('is-hidden');
+  elMonthLabel.setAttribute('aria-expanded', 'true');
+}
+
+function closeMonthPicker() {
+  if (!elMonthPicker) { return; }
+  elMonthPicker.classList.add('is-hidden');
+  elMonthLabel.setAttribute('aria-expanded', 'false');
+}
+
+function pickMonth(key) {
+  if (!/^\d{4}-\d{2}$/.test(key)) { return; }
+  state.listMonth = key;
+  closeMonthPicker();
   renderList();
 }
 
@@ -839,6 +896,7 @@ function renderTrend() {
 
 function go(page, keepScroll) {
   state.page = page;
+  closeMonthPicker();
   var pages = document.querySelectorAll('.page');
   for (var i = 0; i < pages.length; i++) {
     pages[i].classList.toggle('is-active', pages[i].getAttribute('data-page') === page);
@@ -1992,6 +2050,32 @@ elTabbar.addEventListener('click', function (e) {
 
 $('btnPrevMonth').addEventListener('click', function () { shiftMonth(-1); });
 $('btnNextMonth').addEventListener('click', function () { shiftMonth(1); });
+
+/* 点月份标题 → 展开年月选择器；再点一下收起来 */
+elMonthLabel.addEventListener('click', function (e) {
+  e.stopPropagation();                 /* 别冒泡到「点别处关闭」那条 */
+  if (elMonthPicker.classList.contains('is-hidden')) { openMonthPicker(); }
+  else { closeMonthPicker(); }
+});
+
+elMonthPicker.addEventListener('click', function (e) { e.stopPropagation(); });
+
+$('mpPrevYear').addEventListener('click', function () { mpYear -= 1; renderMonthPicker(); });
+$('mpNextYear').addEventListener('click', function () { mpYear += 1; renderMonthPicker(); });
+
+elMpGrid.addEventListener('click', function (e) {
+  var cell = e.target.closest('.mp-cell');
+  if (!cell) { return; }
+  pickMonth(cell.getAttribute('data-ym'));
+});
+
+$('mpToday').addEventListener('click', function () { pickMonth(currentMonthKey()); });
+
+/* 点页面别处、按 Esc 都关掉选择器（点它自己和点标题时已经在上面拦住了） */
+document.addEventListener('click', function () { closeMonthPicker(); });
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape') { closeMonthPicker(); }
+});
 
 elFilterChips.addEventListener('click', function (e) {
   var chip = e.target.closest('.chip');

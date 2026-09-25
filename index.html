@@ -83,13 +83,42 @@
                   stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
-        <div class="month-label" id="monthLabel">2026 年 9 月</div>
+        <button class="month-label" id="monthLabel" type="button"
+                aria-haspopup="true" aria-expanded="false" title="点这里直接选年月"><span
+                id="monthText">2026 年 9 月</span><svg
+                class="month-caret" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
+            <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.2"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+          </svg></button>
         <button class="icon-btn" id="btnNextMonth" type="button" aria-label="下个月">
           <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
             <path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="1.8"
                   stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
+
+        <div class="month-picker is-hidden" id="monthPicker">
+        <div class="mp-head">
+          <button class="icon-btn" id="mpPrevYear" type="button" aria-label="上一年">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="1.8"
+                    stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <span class="mp-year" id="mpYear">2026 年</span>
+          <button class="icon-btn" id="mpNextYear" type="button" aria-label="下一年">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="1.8"
+                    stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+        <div class="mp-grid" id="mpGrid"></div>
+        <div class="mp-foot">
+          <span class="mp-hint">有圆点的月份记过账</span>
+          <button class="mp-today" id="mpToday" type="button">回到本月</button>
+        </div>
+        </div>
       </div>
 
       <div class="list-filters" id="filterChips">

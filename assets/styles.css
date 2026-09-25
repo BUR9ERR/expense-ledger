@@ -307,13 +307,98 @@ body[data-type="income"] .btn-primary{background:var(--income)}
 .btn-ghost-danger:active{opacity:.8}
 
 .month-nav{
+  position:relative;
   display:flex;
   align-items:center;
   justify-content:space-between;
   margin-bottom:12px;
 }
 
-.month-label{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
+.month-label{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  border:none;
+  background:transparent;
+  border-radius:10px;
+  padding:6px 10px;
+  font-size:15px;
+  font-weight:600;
+  font-variant-numeric:tabular-nums;
+  color:var(--text);
+  cursor:pointer;
+}
+.month-label:active{background:rgba(0,0,0,.06)}
+.month-caret{color:var(--muted);flex:none;margin-top:1px}
+
+.month-picker{
+  position:absolute;
+  top:100%;
+  left:0;
+  right:0;
+  margin-top:2px;
+  z-index:30;
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+  padding:10px 12px 12px;
+}
+
+.mp-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.mp-year{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
+
+.mp-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+
+.mp-cell{
+  position:relative;
+  border:1px solid var(--line);
+  background:var(--card);
+  border-radius:10px;
+  padding:9px 0;
+  font-size:13px;
+  color:var(--muted);
+  font-variant-numeric:tabular-nums;
+  cursor:pointer;
+}
+.mp-cell:active{background:var(--soft)}
+.mp-cell.has-data{color:var(--text);border-color:var(--line-strong)}
+.mp-cell.has-data::after{
+  content:"";
+  position:absolute;
+  left:50%;
+  bottom:4px;
+  width:4px;
+  height:4px;
+  margin-left:-2px;
+  border-radius:50%;
+  background:var(--faint);
+}
+.mp-cell.is-active.has-data::after{background:rgba(255,255,255,.8)}
+.mp-cell.is-now{box-shadow:inset 0 0 0 1px var(--faint)}
+.mp-cell.is-active{background:var(--text);color:#fff;border-color:var(--text)}
+
+.mp-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px}
+.mp-hint{font-size:11.5px;color:var(--faint)}
+.mp-hint::before{
+  content:"";
+  display:inline-block;
+  width:5px;height:5px;
+  border-radius:50%;
+  background:var(--faint);
+  margin-right:5px;
+  vertical-align:1px;
+}
+.mp-today{
+  border:1px dashed var(--line-strong);
+  background:transparent;
+  color:var(--muted);
+  border-radius:10px;
+  padding:6px 14px;
+  font-size:12.5px;
+  cursor:pointer;
+}
+.mp-today:active{background:var(--soft)}
 
 .list-filters{display:flex;gap:8px;margin-bottom:14px}
 
