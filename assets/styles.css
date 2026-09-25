@@ -304,9 +304,10 @@ body[data-type="income"] .btn-primary{background:var(--income)}
   padding:14px;
   border-radius:14px;
   cursor:pointer;
+  transition:opacity .15s,transform .16s var(--ease-out);
 }
 
-.btn-ghost-danger:active{opacity:.8}
+.btn-ghost-danger:active{opacity:.8;transform:scale(.98)}
 
 .month-nav{
   position:relative;
@@ -331,7 +332,8 @@ body[data-type="income"] .btn-primary{background:var(--income)}
   cursor:pointer;
 }
 .month-label:active{background:rgba(0,0,0,.06)}
-.month-caret{color:var(--muted);flex:none;margin-top:1px}
+.month-caret{color:var(--muted);flex:none;margin-top:1px;transition:transform .18s var(--ease-out)}
+.month-label[aria-expanded="true"] .month-caret{transform:rotate(180deg)}
 
 .month-picker{
   position:absolute;
@@ -345,7 +347,15 @@ body[data-type="income"] .btn-primary{background:var(--income)}
   border-radius:var(--radius);
   box-shadow:var(--shadow);
   padding:10px 12px 12px;
+  /* 开合动画：从月份标题的位置长出来（transform-origin 对齐触发点），
+     收场只摘 is-open，靠这里的过渡自己淡出缩回 */
+  opacity:0;
+  transform:scale(.96) translateY(-4px);
+  transform-origin:top center;
+  pointer-events:none;
+  transition:opacity .18s var(--ease-out),transform .18s var(--ease-out);
 }
+.month-picker.is-open{opacity:1;transform:none;pointer-events:auto}
 
 .mp-head{display:flex;justify-content:center;margin-bottom:8px}
 
@@ -674,7 +684,9 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
   background:rgba(0,0,0,.32);
   z-index:40;
   animation:pageIn .2s ease;
+  transition:opacity .2s ease;
 }
+.sheet-mask.is-closing{opacity:0}
 
 .sheet{
   position:fixed;

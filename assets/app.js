@@ -730,13 +730,20 @@ function openMonthPicker() {
   if (!elMonthPicker) { return; }
   mpYear = Number(state.listMonth.split('-')[0]);
   renderMonthPicker();
-  elMonthPicker.classList.remove('is-hidden');
+  /* 开场：先撤掉 display:none，回流后再挂 is-open，
+     让透明度/缩放的过渡真正跑起来（display 切换是不会触发过渡的） */
+  if (elMonthPicker.classList.contains('is-hidden')) {
+    elMonthPicker.classList.remove('is-hidden');
+    void elMonthPicker.offsetWidth;
+  }
+  elMonthPicker.classList.add('is-open');
   elMonthLabel.setAttribute('aria-expanded', 'true');
 }
 
 function closeMonthPicker() {
   if (!elMonthPicker) { return; }
-  elMonthPicker.classList.add('is-hidden');
+  /* 收场：只摘 is-open，面板自己淡出缩回（CSS 过渡），不再闪回 display:none */
+  elMonthPicker.classList.remove('is-open');
   elMonthLabel.setAttribute('aria-expanded', 'false');
 }
 
@@ -1161,16 +1168,38 @@ function clearAll() {
   toast('\u5DF2\u6E05\u7A7A');
 }
 
+var sheetCloseTimer = null;
+
 function openSheet(el) {
+  /* 快速「关了又开」时：撤销收场动画，别让面板半路被藏起来 */
+  if (sheetCloseTimer) {
+    clearTimeout(sheetCloseTimer);
+    sheetCloseTimer = null;
+  }
+  elMask.classList.remove('is-closing');
+  elSheetData.classList.remove('is-closing');
+  elSheetImport.classList.remove('is-closing');
+  elSheetBill.classList.remove('is-closing');
   elMask.classList.remove('is-hidden');
   el.classList.remove('is-hidden');
 }
 
 function closeSheets() {
-  elMask.classList.add('is-hidden');
-  elSheetData.classList.add('is-hidden');
-  elSheetImport.classList.add('is-hidden');
-  elSheetBill.classList.add('is-hidden');
+  /* 退出动画：从哪进来就往哪出去（底部滑回），收完再真正隐藏。
+     进场稍慢、退场更快（210ms < 240ms），重复触发直接忽略。 */
+  if (sheetCloseTimer) { return; }
+  var closing = [elMask, elSheetData, elSheetImport, elSheetBill].filter(function (s) {
+    return !s.classList.contains('is-hidden');
+  });
+  if (!closing.length) { return; }
+  closing.forEach(function (s) { s.classList.add('is-closing'); });
+  sheetCloseTimer = setTimeout(function () {
+    closing.forEach(function (s) {
+      s.classList.add('is-hidden');
+      s.classList.remove('is-closing');
+    });
+    sheetCloseTimer = null;
+  }, 210);
 }
 
 /* ============================================================
@@ -2086,7 +2115,7 @@ $('btnNextMonth').addEventListener('click', function () { shiftMonth(1); });
 /* 点月份标题 → 展开年月选择器；再点一下收起来 */
 elMonthLabel.addEventListener('click', function (e) {
   e.stopPropagation();                 /* 别冒泡到「点别处关闭」那条 */
-  if (elMonthPicker.classList.contains('is-hidden')) { openMonthPicker(); }
+  if (!elMonthPicker.classList.contains('is-open')) { openMonthPicker(); }
   else { closeMonthPicker(); }
 });
 
