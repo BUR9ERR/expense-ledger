@@ -345,8 +345,27 @@ body[data-type="income"] .btn-primary{background:var(--income)}
   padding:10px 12px 12px;
 }
 
-.mp-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
-.mp-year{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
+.mp-head{display:flex;justify-content:center;margin-bottom:8px}
+
+select.mp-year{
+  appearance:none;
+  -webkit-appearance:none;
+  border:1px solid var(--line-strong);
+  background-color:var(--card);
+  color:var(--text);
+  border-radius:10px;
+  padding:7px 32px 7px 14px;
+  font-size:14px;
+  font-weight:600;
+  font-variant-numeric:tabular-nums;
+  font-family:inherit;
+  cursor:pointer;
+  background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 9l6 6 6-6' fill='none' stroke='%2378786F' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;
+  background-position:right 10px center;
+  background-size:12px 12px;
+}
+select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 
 .mp-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
 

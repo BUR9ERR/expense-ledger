@@ -43,7 +43,7 @@ var elBtnCancel  = $('btnCancelEdit');
 var elMonthLabel = $('monthLabel');
 var elMonthText  = $('monthText');
 var elMonthPicker= $('monthPicker');
-var elMpYear     = $('mpYear');
+var elMpYearSel  = $('mpYearSel');
 var elMpGrid     = $('mpGrid');
 var elFilterChips= $('filterChips');
 var elListTotal  = $('listTotal');
@@ -680,7 +680,30 @@ var mpYear = 0;
 
 function renderMonthPicker() {
   if (!elMpGrid) { return; }
-  elMpYear.textContent = mpYear + ' \u5E74';
+
+  /* 年份下拉：可选范围 = 有账目的年份 ∪ 今年 ∪ 正在看的年份，新的排上面。
+     要看哪年直接选，不用一下一下翻。 */
+  var nowY = new Date().getFullYear();
+  var minY = nowY, maxY = nowY;
+  db.transactions.forEach(function (t) {
+    var m = String(t.date || '').match(/^(\d{4})-/);
+    if (!m) { return; }
+    var y = Number(m[1]);
+    if (y < minY) { minY = y; }
+    if (y > maxY) { maxY = y; }
+  });
+  var viewY = Number(state.listMonth.split('-')[0]);
+  if (viewY < minY) { minY = viewY; }
+  if (viewY > maxY) { maxY = viewY; }
+  if (mpYear < minY) { minY = mpYear; }
+  if (mpYear > maxY) { maxY = mpYear; }
+
+  var opts = '';
+  for (var y = maxY; y >= minY; y--) {
+    opts += '<option value="' + y + '"' + (y === mpYear ? ' selected' : '') + '>' +
+            y + ' \u5E74</option>';
+  }
+  elMpYearSel.innerHTML = opts;
 
   /* 哪几个月记过账？有账的格子加个小圆点，一眼看出该往哪跳 */
   var hasData = {};
@@ -2060,8 +2083,11 @@ elMonthLabel.addEventListener('click', function (e) {
 
 elMonthPicker.addEventListener('click', function (e) { e.stopPropagation(); });
 
-$('mpPrevYear').addEventListener('click', function () { mpYear -= 1; renderMonthPicker(); });
-$('mpNextYear').addEventListener('click', function () { mpYear += 1; renderMonthPicker(); });
+/* 年份下拉：选哪年就翻到哪年 */
+elMpYearSel.addEventListener('change', function () {
+  mpYear = Number(elMpYearSel.value);
+  renderMonthPicker();
+});
 
 elMpGrid.addEventListener('click', function (e) {
   var cell = e.target.closest('.mp-cell');

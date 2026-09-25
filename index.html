@@ -99,19 +99,7 @@
 
         <div class="month-picker is-hidden" id="monthPicker">
         <div class="mp-head">
-          <button class="icon-btn" id="mpPrevYear" type="button" aria-label="上一年">
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-              <path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="1.8"
-                    stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </button>
-          <span class="mp-year" id="mpYear">2026 年</span>
-          <button class="icon-btn" id="mpNextYear" type="button" aria-label="下一年">
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-              <path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="1.8"
-                    stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </button>
+          <select class="mp-year" id="mpYearSel" aria-label="选择年份"></select>
         </div>
         <div class="mp-grid" id="mpGrid"></div>
         <div class="mp-foot">
