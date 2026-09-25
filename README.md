@@ -1,9 +1,15 @@
 # 记账本
 
 <p align="center">
-  <img src="docs/preview-record.png" width="200" alt="记一笔">
-  <img src="docs/preview-list.png" width="200" alt="流水">
-  <img src="docs/preview-summary.png" width="200" alt="本月">
+  <img src="docs/preview-record.png" width="200" alt="记一笔（浅色）">
+  <img src="docs/preview-list.png" width="200" alt="流水（浅色）">
+  <img src="docs/preview-summary.png" width="200" alt="本月（浅色）">
+</p>
+
+<p align="center">
+  <img src="docs/preview-record-dark.png" width="200" alt="记一笔（深色）">
+  <img src="docs/preview-list-dark.png" width="200" alt="流水（深色）">
+  <img src="docs/preview-summary-dark.png" width="200" alt="本月（深色）">
 </p>
 
 <p align="center">
