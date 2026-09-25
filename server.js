@@ -202,6 +202,37 @@ function isServable(filePath) {
   return segs[0].toLowerCase() === 'assets';
 }
 
+/* 写操作的「同站」校验，防「网页里偷偷 POST 到本机端口」这类 CSRF：
+   1) 要求 Content-Type: application/json —— 跨站的简单请求（表单提交、no-cors fetch）
+      只可能带 text/plain / form-urlencoded，直接 415 挡掉；带 JSON 类型的跨站请求
+      会先发预检（OPTIONS），而这里不回应预检，也就过不来；
+   2) 再核对 Origin —— 带了 Origin 且主机名跟请求的 Host 对不上的，一律 403。
+   同源请求（本机浏览器、手机浏览器直接打开本服务）两项都天然满足，不受影响。 */
+function sameOrigin(req) {
+  const origin = req.headers.origin;
+  if (!origin) { return true; }
+  try {
+    return new URL(origin).host === String(req.headers.host || '');
+  } catch (e) {
+    return false;
+  }
+}
+
+function requireSameSite(req, res) {
+  const ct = String(req.headers['content-type'] || '');
+  if (ct.indexOf('application/json') !== 0) {
+    res.writeHead(415, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Unsupported Media Type');
+    return false;
+  }
+  if (!sameOrigin(req)) {
+    res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Forbidden');
+    return false;
+  }
+  return true;
+}
+
 function serveStatic(pathname, res) {
   const rel = pathname === '/' ? '/index.html' : pathname;
   const filePath = path.join(ROOT, path.normalize(rel));
@@ -266,6 +297,7 @@ const server = http.createServer(function (req, res) {
       return;
     }
     if (req.method === 'PUT' || req.method === 'POST') {
+      if (!requireSameSite(req, res)) { return; }
       readBody(req, function (text) {
         if (text === null) { sendJSON(res, 400, { error: '请求体过大或读取失败' }); return; }
         let payload;
@@ -309,6 +341,8 @@ const server = http.createServer(function (req, res) {
       res.end();
       return;
     }
+    /* 同 /api/db：不允许别的网页隔空把服务停掉 */
+    if (!requireSameSite(req, res)) { return; }
     sendJSON(res, 200, { ok: true });
     console.log('');
     console.log('  网页端点了「停止服务」，正在退出。');

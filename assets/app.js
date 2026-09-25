@@ -2206,12 +2206,15 @@ $('btnCloseSheet').addEventListener('click', closeSheets);
 $('btnCloseImport').addEventListener('click', closeSheets);
 elMask.addEventListener('click', closeSheets);
 
-/* 外观三段开关：跟随系统 / 浅色 / 深色 */
-elThemeSeg.addEventListener('click', function (e) {
-  var btn = e.target.closest('.seg-item');
-  if (!btn) { return; }
-  applyTheme(btn.getAttribute('data-theme'));
-});
+/* 外观三段开关：跟随系统 / 浅色 / 深色
+   （万一页面上没有这个元素——比如浏览器缓存了旧版 index.html——跳过，别让后面的绑定全崩） */
+if (elThemeSeg) {
+  elThemeSeg.addEventListener('click', function (e) {
+    var btn = e.target.closest('.seg-item');
+    if (!btn) { return; }
+    applyTheme(btn.getAttribute('data-theme'));
+  });
+}
 
 $('btnExport').addEventListener('click', downloadBackup);
 $('btnExportText').addEventListener('click', copyBackupText);
