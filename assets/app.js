@@ -66,6 +66,7 @@ var elBillFile   = $('billFile');
 var elBillResult = $('billResult');
 var elBtnBillOk  = $('btnBillConfirm');
 var elBackupNote = $('backupNotice');
+var elThemeSeg   = $('themeSeg');
 var elToast      = $('toast');
 var elFileInput  = $('fileInput');
 var elImportText = $('importText');
@@ -1170,6 +1171,38 @@ function clearAll() {
 
 var sheetCloseTimer = null;
 
+/* ---------- 主题（跟随系统 / 浅色 / 深色） ----------
+   选择存在 localStorage.theme，实际生效方式是给 <html> 挂 data-theme，
+   深色令牌全部挂在 html[data-theme="dark"] 下（见 styles.css 末尾）。 */
+var mqDark = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+function applyTheme(t) {
+  try { localStorage.setItem('theme', t); } catch (e) { /* ignore */ }
+  var dark = t === 'dark' || (t === 'auto' && mqDark && mqDark.matches);
+  if (dark) { document.documentElement.setAttribute('data-theme', 'dark'); }
+  else { document.documentElement.removeAttribute('data-theme'); }
+  syncThemeSeg();
+}
+
+function syncThemeSeg() {
+  if (!elThemeSeg) { return; }
+  var cur = 'auto';
+  try { cur = localStorage.getItem('theme') || 'auto'; } catch (e) { /* ignore */ }
+  var items = elThemeSeg.querySelectorAll('.seg-item');
+  for (var i = 0; i < items.length; i++) {
+    items[i].classList.toggle('is-active', items[i].getAttribute('data-theme') === cur);
+  }
+}
+
+/* 系统深浅切换时，「跟随系统」要实时跟着变 */
+if (mqDark && mqDark.addEventListener) {
+  mqDark.addEventListener('change', function () {
+    var t = 'auto';
+    try { t = localStorage.getItem('theme') || 'auto'; } catch (e) { /* ignore */ }
+    if (t === 'auto') { applyTheme('auto'); }
+  });
+}
+
 function openSheet(el) {
   /* 快速「关了又开」时：撤销收场动画，别让面板半路被藏起来 */
   if (sheetCloseTimer) {
@@ -1182,6 +1215,7 @@ function openSheet(el) {
   elSheetBill.classList.remove('is-closing');
   elMask.classList.remove('is-hidden');
   el.classList.remove('is-hidden');
+  syncThemeSeg();
 }
 
 function closeSheets() {
@@ -2171,6 +2205,13 @@ $('btnData').addEventListener('click', function () {
 $('btnCloseSheet').addEventListener('click', closeSheets);
 $('btnCloseImport').addEventListener('click', closeSheets);
 elMask.addEventListener('click', closeSheets);
+
+/* 外观三段开关：跟随系统 / 浅色 / 深色 */
+elThemeSeg.addEventListener('click', function (e) {
+  var btn = e.target.closest('.seg-item');
+  if (!btn) { return; }
+  applyTheme(btn.getAttribute('data-theme'));
+});
 
 $('btnExport').addEventListener('click', downloadBackup);
 $('btnExportText').addEventListener('click', copyBackupText);

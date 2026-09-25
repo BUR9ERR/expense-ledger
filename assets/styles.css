@@ -12,6 +12,7 @@
   --track:#E9E9EE;           /* 条形图轨道 */
   --expense:#FF3B30;         /* iOS systemRed */
   --income:#34C759;          /* iOS systemGreen */
+  --trend-cur:#E0796E;       /* 趋势图当月柱：降饱和的支出红，不晃眼 */
   --warn:#D99A2B;
   --warn-soft:#FDF7E6;
   --warn-line:#F0DFB0;
@@ -140,6 +141,10 @@ button{font-family:inherit;color:inherit}
   gap:2px;
 }
 
+/* 数据管理面板里的整宽分段开关（外观设置用） */
+.seg-block{display:flex;width:100%;margin:2px 0 12px}
+.seg-block .seg-item{flex:1}
+
 .seg-item{
   border:none;
   background:transparent;
@@ -168,7 +173,7 @@ button{font-family:inherit;color:inherit}
   align-items:baseline;
   gap:6px;
   background:var(--card);
-  border:1px solid var(--line);
+  border:none;
   border-radius:var(--radius);
   padding:16px 20px;
   margin-bottom:16px;
@@ -211,7 +216,7 @@ body[data-type="income"] .btn-primary{background:var(--income)}
   grid-template-columns:repeat(5,1fr);
   gap:4px;
   background:var(--card);
-  border:1px solid var(--line);
+  border:none;
   border-radius:var(--radius);
   padding:12px 8px;
 }
@@ -260,7 +265,7 @@ body[data-type="income"] .btn-primary{background:var(--income)}
   flex:1;
   min-width:0;
   background:var(--card);
-  border:1px solid var(--line);
+  border:none;
   border-radius:11px;
   padding:11px 14px;
   font-size:16px;
@@ -278,7 +283,7 @@ body[data-type="income"] .btn-primary{background:var(--income)}
 
 .quick-dates button{
   flex:1;
-  border:1px solid var(--line);
+  border:none;
   background:var(--card);
   border-radius:11px;
   padding:0 4px;
@@ -356,7 +361,7 @@ body[data-type="income"] .btn-primary{background:var(--income)}
   margin-top:2px;
   z-index:30;
   background:var(--card);
-  border:1px solid var(--line);
+  border:none;
   border-radius:var(--radius);
   box-shadow:var(--shadow);
   padding:10px 12px 12px;
@@ -396,8 +401,8 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 
 .mp-cell{
   position:relative;
-  border:1px solid var(--line);
-  background:var(--card);
+  border:none;
+  background:var(--soft);
   border-radius:10px;
   padding:9px 0;
   font-size:13px;
@@ -406,7 +411,7 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
   cursor:pointer;
 }
 .mp-cell:active{background:var(--soft)}
-.mp-cell.has-data{color:var(--text);border-color:var(--line-strong)}
+.mp-cell.has-data{color:var(--text)}
 .mp-cell.has-data::after{
   content:"";
   position:absolute;
@@ -447,7 +452,7 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 .list-filters{display:flex;gap:8px;margin-bottom:14px}
 
 .chip{
-  border:1px solid var(--line);
+  border:none;
   background:var(--card);
   border-radius:999px;
   padding:6px 16px;
@@ -484,7 +489,7 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 
 .tx-group{
   background:var(--card);
-  border:1px solid var(--line);
+  border:none;
   border-radius:var(--radius);
   overflow:hidden;
 }
@@ -654,7 +659,7 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 }
 .trend.is-in .trend-bar{transform:scaleY(1)}
 
-.trend-bar.is-cur{background:var(--expense)}
+.trend-bar.is-cur{background:var(--trend-cur)}
 
 .trend-label{display:flex;gap:8px;margin-top:8px}
 .trend-label span{flex:1;text-align:center;font-size:11px;color:var(--faint)}
@@ -786,9 +791,9 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 .bill-preview{
   margin:4px 6px 12px;
   padding:10px 12px 6px;
-  border:1px solid var(--line);
+  border:none;
   border-radius:12px;
-  background:var(--card);
+  background:var(--soft);
 }
 .bill-head{font-size:12px;color:var(--muted);margin-bottom:4px}
 .bill-row{
@@ -837,7 +842,7 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
   word-break:break-all;
   padding:8px 10px;
   background:var(--card);
-  border:1px solid var(--line);
+  border:none;
   border-radius:9px;
   margin-bottom:8px;
 }
@@ -859,7 +864,7 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 .textarea{
   width:100%;
   min-height:112px;
-  border:1px solid var(--line);
+  border:none;
   border-radius:11px;
   padding:11px 13px;
   font-size:16px;
@@ -888,7 +893,7 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
   width:100%;
   max-width:360px;
   background:var(--card);
-  border:1px solid var(--line);
+  border:none;
   border-radius:18px;
   padding:28px 22px 22px;
   text-align:center;
@@ -900,7 +905,7 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
   height:52px;
   border-radius:50%;
   background:var(--soft);
-  border:1px solid var(--line);
+  border:none;
   display:flex;
   align-items:center;
   justify-content:center;
@@ -962,7 +967,7 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
     right:auto;
     transform:translateX(-50%);
     bottom:22px;
-    border:1px solid var(--line);
+    border:none;
     border-radius:999px;
     box-shadow:var(--shadow);
     padding:5px;
@@ -1012,10 +1017,10 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 }
 
 /* ============================================================
-   深色模式：跟随系统自动切换（iOS 深色语义色，零 JS）
+   深色模式：由 app.js 依「跟随系统 / 浅色 / 深色」设置挂 data-theme
+   （iOS 深色语义色，零依赖）
    ============================================================ */
-@media (prefers-color-scheme: dark){
-  :root{
+html[data-theme="dark"]{
     --bg:#000000;
     --card:#1C1C1E;
     --text:#F2F2F7;
@@ -1027,6 +1032,7 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
     --track:#2C2C2E;
     --expense:#FF453A;
     --income:#30D158;
+    --trend-cur:#CE6A60;
     --accent:#0A84FF;
     --invert-bg:#F2F2F7;
     --invert-text:#101014;
@@ -1041,5 +1047,4 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
     --warn:#F5C542;--warn-soft:#332B16;--warn-line:#57491F;--warn-text:#E8C15C;
     --toast-bg:rgba(44,44,46,.96);--toast-text:#F2F2F7;
     --shadow:0 1px 2px rgba(0,0,0,.5),0 10px 30px rgba(0,0,0,.5);
-  }
 }

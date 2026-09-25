@@ -9,6 +9,18 @@
 <meta name="apple-mobile-web-app-title" content="记账本">
 <meta name="description" content="本地记账本，数据只存在你自己的设备上。">
 <title>记账本</title>
+<script>
+/* 主题预置：在首帧前按 localStorage.theme（auto/light/dark）挂好 data-theme，
+   避免深色用户看到一闪而过的浅色。具体应用逻辑在 app.js。 */
+(function () {
+  try {
+    var t = localStorage.getItem('theme') || 'auto';
+    var dark = t === 'dark' || (t !== 'light' && window.matchMedia &&
+               window.matchMedia('(prefers-color-scheme: dark)').matches);
+    if (dark) { document.documentElement.setAttribute('data-theme', 'dark'); }
+  } catch (e) { /* 隐私模式等取不到 localStorage 时按浅色走 */ }
+})();
+</script>
 <link rel="stylesheet" href="assets/styles.css">
 </head>
 <body>
@@ -184,6 +196,12 @@
   <div class="sheet-body">
     <div class="notice" id="storageBox"></div>
     <div class="notice" id="backupNotice"></div>
+    <div class="block-title">外观</div>
+    <div class="seg seg-block" id="themeSeg">
+      <button class="seg-item is-active" type="button" data-theme="auto">跟随系统</button>
+      <button class="seg-item" type="button" data-theme="light">浅色</button>
+      <button class="seg-item" type="button" data-theme="dark">深色</button>
+    </div>
     <div class="mobile-box is-hidden" id="mobileBox">
       <div class="mobile-title">在手机上用</div>
       <div class="mobile-url" id="mobileUrl"></div>
