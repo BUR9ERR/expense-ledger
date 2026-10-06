@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-title 记账本 - 关掉这个窗口就会停止服务
+title 记账本 - 输入 q 回车停止服务
 cd /d "%~dp0"
 
 set "NODE_EXE="
@@ -20,6 +20,10 @@ if not defined NODE_EXE if exist "%ProgramFiles%\nodejs\node.exe" set "NODE_EXE=
 if not defined NODE_EXE if exist "%LOCALAPPDATA%\Programs\nodejs\node.exe" set "NODE_EXE=%LOCALAPPDATA%\Programs\nodejs\node.exe"
 
 if not defined NODE_EXE goto nonode
+
+rem 服务起来后自动打开浏览器（延迟 2 秒等端口就绪；自定义过 PORT 的话
+rem 这里打开的还是 8765，手动在地址栏改一下就行）
+start "" /min cmd /c "timeout /t 2 /nobreak >nul & start "" http://localhost:8765/"
 
 "%NODE_EXE%" server.js
 goto ended

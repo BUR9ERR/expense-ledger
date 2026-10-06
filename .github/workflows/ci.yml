@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 项目要求 Node 18+；用两个长期支持版各跑一遍
+        node-version: [18, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - name: 使用 Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      # 零依赖项目：不需要 npm install，直接跑内置 test runner
+      - name: 纯逻辑与接口测试
+        run: node --test tests/core.test.js tests/server.test.js tests/api.test.js
+      # 前端静态一致性检查（id 引用 / 面板顺序 / 缓存与打包清单 / 禁内联脚本）
+      - name: 前端静态检查
+        run: node tools/check-dom.js

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- 记账本图标：蓝底圆角方块 + 白色 ¥。PNG 版本由 tools/make-icons.py 生成本图的位图 -->
+  <rect width="512" height="512" rx="112" fill="#007AFF"/>
+  <g stroke="#FFFFFF" stroke-width="27" stroke-linecap="round" fill="none">
+    <path d="M146 113 L256 256"/>
+    <path d="M366 113 L256 256"/>
+    <path d="M256 256 L256 410"/>
+  </g>
+  <g fill="#FFFFFF">
+    <rect x="169" y="289" width="174" height="26" rx="13"/>
+    <rect x="169" y="345" width="174" height="26" rx="13"/>
+  </g>
+</svg>

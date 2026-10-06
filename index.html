@@ -9,19 +9,13 @@
 <meta name="apple-mobile-web-app-title" content="记账本">
 <meta name="description" content="本地记账本，数据只存在你自己的设备上。">
 <title>记账本</title>
-<script>
-/* 主题预置：在首帧前按 localStorage.theme（auto/light/dark）挂好 data-theme，
-   避免深色用户看到一闪而过的浅色。具体应用逻辑在 app.js。 */
-(function () {
-  try {
-    var t = localStorage.getItem('theme') || 'auto';
-    var dark = t === 'dark' || (t !== 'light' && window.matchMedia &&
-               window.matchMedia('(prefers-color-scheme: dark)').matches);
-    if (dark) { document.documentElement.setAttribute('data-theme', 'dark'); }
-  } catch (e) { /* 隐私模式等取不到 localStorage 时按浅色走 */ }
-})();
-</script>
+<!-- 主题预置：必须比样式表先跑，所以放在 <head> 里同步加载。
+     不能写成内联脚本——服务端 CSP 是 script-src 'self'，内联会被浏览器拦掉。 -->
+<script src="assets/theme-init.js"></script>
 <link rel="stylesheet" href="assets/styles.css">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/svg+xml" href="assets/icon.svg">
+<link rel="apple-touch-icon" href="assets/icon-180.png">
 </head>
 <body>
 
@@ -50,6 +44,8 @@
         <div class="seg" id="typeSwitch">
           <button class="seg-item is-active" type="button" data-type="expense">支出</button>
           <button class="seg-item" type="button" data-type="income">收入</button>
+          <button class="seg-item" type="button" data-type="transfer"
+                  title="转账、信用卡还款：钱只是在自己账户之间挪，不计入收支统计">不计收支</button>
         </div>
         <button class="text-btn is-hidden" id="btnCancelEdit" type="button">取消编辑</button>
       </div>
@@ -59,10 +55,18 @@
         <input class="amount-input" id="amountInput" type="text" inputmode="decimal"
                placeholder="0.00" autocomplete="off" enterkeyhint="done" aria-label="金额">
       </div>
+      <!-- 算式实时结果：输入 23+18 时显示「= 41」，只在有算式时出现 -->
+      <div class="amount-hint is-hidden" id="amountHint"></div>
 
       <div class="block">
         <div class="block-title">分类</div>
         <div class="cat-grid" id="catGrid"></div>
+      </div>
+
+      <div class="notice is-hidden" id="transferNote">
+        <b>不计收支</b>：转账、信用卡还款、借还款这类，钱只是在自己账户之间挪。
+        它照常出现在流水里（方便对账），但<b>不算支出也不算收入</b>——
+        不会进本月总额、日均、分类占比和预算。
       </div>
 
       <div class="block">
@@ -81,6 +85,15 @@
         <div class="block-title">备注</div>
         <input type="text" id="noteInput" class="input" maxlength="40"
                placeholder="可选，比如：和同事吃午饭" autocomplete="off">
+      </div>
+
+      <div class="block">
+        <div class="block-title">来源</div>
+        <div class="seg seg-block" id="sourceSwitch">
+          <button class="seg-item is-active" type="button" data-src="manual">手动</button>
+          <button class="seg-item" type="button" data-src="wechat">微信</button>
+          <button class="seg-item" type="button" data-src="alipay">支付宝</button>
+        </div>
       </div>
 
       <button class="btn-primary" id="btnSave" type="button">记下来</button>
@@ -108,6 +121,8 @@
                   stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
+        <button class="text-btn" id="btnCalendar" type="button">日历</button>
+        <button class="text-btn" id="btnBatch" type="button">批量删除</button>
 
         <div class="month-picker is-hidden" id="monthPicker">
         <div class="mp-head">
@@ -121,10 +136,67 @@
         </div>
       </div>
 
-      <div class="list-filters" id="filterChips">
-        <button class="chip is-active" type="button" data-filter="all">全部</button>
-        <button class="chip" type="button" data-filter="expense">支出</button>
-        <button class="chip" type="button" data-filter="income">收入</button>
+      <div class="search-row">
+        <input type="text" id="searchInput" class="input" autocomplete="off"
+               placeholder="搜索全部账目：备注或分类关键词，回车生效">
+      </div>
+
+      <div class="range-row">
+        <input type="text" id="amountMin" class="input" inputmode="decimal"
+               placeholder="金额 ≥" autocomplete="off" title="最小金额">
+        <input type="text" id="amountMax" class="input" inputmode="decimal"
+               placeholder="金额 ≤" autocomplete="off" title="最大金额">
+        <input type="date" id="dateFrom" class="input" title="日期从" aria-label="日期从">
+        <input type="date" id="dateTo" class="input" title="日期到" aria-label="日期到">
+      </div>
+
+      <!-- 日历热力图：点「日历」展开，一眼看出哪天花得多、哪天漏记 -->
+      <div class="calendar is-hidden" id="calendarBox">
+        <div class="cal-week">
+          <span>日</span><span>一</span><span>二</span><span>三</span>
+          <span>四</span><span>五</span><span>六</span>
+        </div>
+        <div class="cal-grid" id="calGrid"></div>
+        <div class="cal-legend">
+          <span class="cal-hint" id="calHint"></span>
+          <span class="cal-scale">少 <i class="lv1"></i><i class="lv2"></i><i class="lv3"></i><i class="lv4"></i> 多</span>
+        </div>
+      </div>
+
+      <div class="filter-row">
+        <span class="filter-label">类型</span>
+        <div class="list-filters" id="filterChips">
+          <button class="chip is-active" type="button" data-filter="all">全部</button>
+          <button class="chip" type="button" data-filter="expense">支出</button>
+          <button class="chip" type="button" data-filter="income">收入</button>
+          <button class="chip" type="button" data-filter="transfer">不计收支</button>
+        </div>
+      </div>
+
+      <div class="filter-row">
+        <span class="filter-label">来源</span>
+        <div class="list-filters" id="sourceChips">
+          <button class="chip is-active" type="button" data-src="all">全部</button>
+          <button class="chip" type="button" data-src="manual">手动</button>
+          <button class="chip" type="button" data-src="wechat">微信</button>
+          <button class="chip" type="button" data-src="alipay">支付宝</button>
+        </div>
+      </div>
+
+      <div class="filter-row has-chips">
+        <span class="filter-label">分类</span>
+        <div class="cat-filter-wrap">
+          <!-- 可多选：点一下选中，再点一下取消；「全部分类」= 清空选择 -->
+          <div class="cat-filter-scroll" id="categoryChips"></div>
+        </div>
+        <button class="text-btn is-hidden" id="btnClearFilters" type="button">清除筛选</button>
+      </div>
+
+      <div class="batch-bar is-hidden" id="batchBar">
+        <button class="text-btn" id="btnBatchAll" type="button">全选</button>
+        <span class="batch-count" id="batchCount">已选 0 笔</span>
+        <button class="btn-mini is-danger" id="btnBatchDelete" type="button" disabled>删除选中</button>
+        <button class="text-btn" id="btnBatchExit" type="button">完成</button>
       </div>
 
       <div class="list-total" id="listTotal"></div>
@@ -132,6 +204,24 @@
     </section>
 
     <section class="page" data-page="summary">
+      <div class="sum-month">
+        <button class="icon-btn" id="btnSumPrev" type="button" aria-label="上个月">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+            <path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <button class="month-label" id="btnSumMonth" type="button" title="回到本月">
+          <span id="sumMonthText">2026 年 9 月</span>
+        </button>
+        <button class="icon-btn" id="btnSumNext" type="button" aria-label="下个月">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+            <path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+
       <div class="hero">
         <div class="hero-label" id="heroLabel">本月支出</div>
         <div class="hero-amount" id="heroAmount">¥0.00</div>
@@ -139,12 +229,28 @@
           <div><span>收入</span><b id="sumIncome">¥0.00</b></div>
           <div><span>结余</span><b id="sumBalance">¥0.00</b></div>
         </div>
+        <div class="hero-delta is-hidden" id="sumDelta"></div>
+      </div>
+
+      <div class="safe-card is-hidden" id="safeCard">
+        <div class="safe-label">今天还能花</div>
+        <div class="safe-amount" id="safeAmount">¥0</div>
+        <div class="safe-hint" id="safeHint"></div>
       </div>
 
       <div class="stat-grid">
         <div class="stat"><b id="statAvg">¥0</b><span>日均支出</span></div>
         <div class="stat"><b id="statMax">¥0</b><span>最大单笔</span></div>
         <div class="stat"><b id="statCount">0</b><span>记账笔数</span></div>
+      </div>
+      <div class="notice is-hidden" id="transferSummaryNote"></div>
+
+      <div class="block">
+        <div class="budget-top">
+          <div class="block-title" style="margin:0">本月预算</div>
+          <button class="text-btn" id="btnBudgetEdit" type="button">编辑</button>
+        </div>
+        <div id="budgetBody"></div>
       </div>
 
       <div class="block">
@@ -155,6 +261,12 @@
       <div class="block">
         <div class="block-title">近 6 个月支出</div>
         <div class="trend" id="trendChart"></div>
+      </div>
+
+      <div class="block">
+        <button class="row-btn" id="btnYearReport" type="button">
+          <b>年度报告</b><span>一整年的收支、最常去的店、最大单笔</span>
+        </button>
       </div>
     </section>
 
@@ -196,11 +308,36 @@
   <div class="sheet-body">
     <div class="notice" id="storageBox"></div>
     <div class="notice" id="backupNotice"></div>
+
+    <!-- 一、本机设置：外观与访问权限（先设好怎么用，再谈数据进出） -->
     <div class="block-title">外观</div>
     <div class="seg seg-block" id="themeSeg">
       <button class="seg-item is-active" type="button" data-theme="auto">跟随系统</button>
       <button class="seg-item" type="button" data-theme="light">浅色</button>
       <button class="seg-item" type="button" data-theme="dark">深色</button>
+    </div>
+    <div class="switchrow is-hidden" id="lanRow">
+      <div class="switch-text">
+        <b>允许手机访问</b>
+        <span>默认关闭：只有这台电脑能打开记账本。打开后同一 WiFi 的设备才能连，公共 WiFi 下请保持关闭</span>
+      </div>
+      <button class="switch" id="lanSwitch" type="button" role="switch" aria-checked="false" aria-label="允许手机访问">
+        <span class="knob"></span>
+      </button>
+    </div>
+    <div class="pin-line is-hidden" id="pinLine">
+      <!-- 整行可点：点一下就把口令复制走（和上面「复制地址」一个手感） -->
+      <span class="pin-value" id="pinCopyArea" role="button" tabindex="0"
+            title="点一下复制口令">新设备首次连接输这个口令：<b id="pinValue"></b></span>
+      <button class="text-btn" id="btnPinRegen" type="button">换一个</button>
+    </div>
+    <!-- 改口令：只在本机可用；没通过验证的设备（含正在申请的设备）看不到这一段 -->
+    <div class="pin-edit is-hidden" id="pinEditBox">
+      <div class="pin-edit-title" id="pinEditTitle">修改访问口令</div>
+      <input type="password" id="pinNewInput" class="input" inputmode="numeric" maxlength="6"
+             autocomplete="new-password" placeholder="输入新的 6 位口令">
+      <button class="btn-mini" id="btnPinSave" type="button">保存新口令</button>
+      <div class="pin-edit-hint" id="pinEditHint"></div>
     </div>
     <div class="mobile-box is-hidden" id="mobileBox">
       <div class="mobile-title">在手机上用</div>
@@ -208,14 +345,17 @@
       <button class="btn-mini" id="btnCopyUrl" type="button">复制地址</button>
       <div class="mobile-hint">手机连上同一个 WiFi，把地址发到手机上点开即可，建议再加到主屏幕。</div>
     </div>
-    <button class="row-btn" id="btnReload" type="button">
-      <b>重新加载</b><span>从电脑上的文件重新读一次最新数据</span>
-    </button>
+
+    <!-- 二、日常操作：先备份、再导入，然后是常用工具 -->
+    <div class="block-title">备份与恢复</div>
     <button class="row-btn" id="btnExport" type="button">
       <b>导出备份文件</b><span>存到网盘或电脑上，换设备时用它迁移</span>
     </button>
     <button class="row-btn" id="btnExportText" type="button">
       <b>复制为文本</b><span>复制一小段文字，用微信发到另一台设备</span>
+    </button>
+    <button class="row-btn" id="btnExportCsv" type="button">
+      <b>导出流水 CSV</b><span>给 Excel 看的表格文件，对账分析用</span>
     </button>
     <button class="row-btn" id="btnImport" type="button">
       <b>导入账本</b><span>选择文件或粘贴文本，自动去重合并</span>
@@ -223,6 +363,35 @@
     <button class="row-btn" id="btnImportBill" type="button">
       <b>导入微信 / 支付宝账单</b><span>选导出的账单文件，按交易单号去重，自动猜分类</span>
     </button>
+    <button class="row-btn" id="btnHistory" type="button">
+      <b>历史版本</b><span>电脑上每次保存前都留了一份，误删了可以回到过去某一刻</span>
+    </button>
+    <button class="row-btn" id="btnReload" type="button">
+      <b>重新加载</b><span>从电脑上的文件重新读一次最新数据</span>
+    </button>
+
+    <div class="block-title">常用工具</div>
+    <button class="row-btn" id="btnCats" type="button">
+      <b>分类管理</b><span>加自己的分类、改名字和图标；不用的可以归档，历史账目照旧</span>
+    </button>
+    <button class="row-btn" id="btnSuspects" type="button">
+      <b>疑似转账</b><span>账单里的转账、还款被记成了支出？这里一次勾出来改成「不计收支」</span>
+    </button>
+    <button class="row-btn" id="btnRules" type="button">
+      <b>自动分类规则</b><span>你改过的店会自动记住；这里能看、能加、能删</span>
+    </button>
+    <button class="row-btn" id="btnRecur" type="button">
+      <b>周期记账</b><span>房租、话费这类每月固定支出，到日子自动补一笔</span>
+    </button>
+    <button class="row-btn" id="btnHealth" type="button">
+      <b>数据体检</b><span>查重复记账、未来日期、零金额、失效分类</span>
+    </button>
+    <button class="row-btn" id="btnTrash" type="button">
+      <b>回收站</b><span>最近删除的记录可以恢复，超过 30 天自动清理</span>
+    </button>
+
+    <!-- 三、危险操作放最后，避免误点 -->
+    <div class="block-title">危险操作</div>
     <button class="row-btn is-warn" id="btnShutdown" type="button">
       <b>停止记账本服务</b><span>关掉电脑上那个黑窗口。手机和浏览器都会断开，账目不受影响</span>
     </button>
@@ -272,6 +441,163 @@
   </div>
 </div>
 
+<div class="sheet is-hidden" id="sheetTrash" role="dialog" aria-label="回收站">
+  <div class="sheet-head">
+    <h2>回收站</h2>
+    <button class="icon-btn" id="btnCloseTrash" type="button" aria-label="关闭">✕</button>
+  </div>
+  <div class="sheet-body">
+    <div class="notice">删掉的账目在这里躺 30 天，误删的可以找回；同步到电脑的删除也会带上标记，别的设备不会把已删的账变回来。</div>
+    <div id="trashList"></div>
+    <button class="btn-ghost-danger is-hidden" id="btnEmptyTrash" type="button">清空回收站</button>
+  </div>
+</div>
+
+<div class="sheet is-hidden" id="sheetBudget" role="dialog" aria-label="编辑预算">
+  <div class="sheet-head">
+    <h2>编辑本月预算</h2>
+    <button class="icon-btn" id="btnCloseBudget" type="button" aria-label="关闭">✕</button>
+  </div>
+  <div class="sheet-body">
+    <div class="notice">只管本月；分类留空或填 0 表示这个分类不设预算。</div>
+    <div class="block-title">总预算</div>
+    <input type="text" id="budgetTotal" class="input" inputmode="decimal"
+           placeholder="比如 2000" autocomplete="off">
+    <label class="checkrow" for="budgetRollover">
+      <input type="checkbox" id="budgetRollover">
+      <span>结转上月结余（上个月没花完的带进来，超支的从本月扣）</span>
+    </label>
+    <div class="pin-edit-hint" id="budgetRolloverHint"></div>
+    <div class="block-title" style="margin-top:14px">分类预算（可选）</div>
+    <div id="budgetCats"></div>
+    <div class="sheet-actions">
+      <button class="text-btn" id="btnBudgetCopy" type="button">用上个月的</button>
+      <button class="btn-primary" id="btnBudgetSave" type="button">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet is-hidden" id="sheetSuspects" role="dialog" aria-label="疑似转账">
+  <div class="sheet-head">
+    <h2>疑似转账</h2>
+    <button class="icon-btn" id="btnCloseSuspects" type="button" aria-label="关闭">✕</button>
+  </div>
+  <div class="sheet-body">
+    <div class="notice">这些账目的备注里有「转账 / 还款 / 提现 / 理财」这类字眼，
+      很可能只是钱在自己账户之间搬，不该算作支出。勾上要改的，点底下的按钮一次性标成
+      <b>不计收支</b>——分类不变，只是不再进本月支出、日均、预算和年度报告。</div>
+    <div id="suspectsList"></div>
+    <div class="sheet-actions is-hidden" id="suspectsActions">
+      <button class="text-btn" id="btnSuspectsAll" type="button">全选</button>
+      <button class="btn-primary" id="btnSuspectsMark" type="button">标为不计收支</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet is-hidden" id="sheetCats" role="dialog" aria-label="分类管理">
+  <div class="sheet-head">
+    <h2>分类管理</h2>
+    <button class="icon-btn" id="btnCloseCats" type="button" aria-label="关闭">✕</button>
+  </div>
+  <div class="sheet-body">
+    <div class="notice">分类可以自己加、改名字和图标。<b>归档</b>是不再出现在「记一笔」和筛选里，
+      但历史账目照旧显示——不想删掉旧账的痕迹就用归档。</div>
+    <div id="catsList"></div>
+    <div class="block-title">新增分类</div>
+    <div class="recur-form">
+      <div class="seg" id="catKind">
+        <button class="seg-item is-active" type="button" data-kind="expense">支出</button>
+        <button class="seg-item" type="button" data-kind="income">收入</button>
+      </div>
+      <input type="text" id="catName" class="input" maxlength="12"
+             placeholder="分类名，比如 宠物" autocomplete="off">
+      <input type="text" id="catIcon" class="input" maxlength="4"
+             placeholder="图标，一个 emoji，比如 🐱" autocomplete="off">
+      <button class="btn-primary" id="btnCatAdd" type="button">添加分类</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet is-hidden" id="sheetHistory" role="dialog" aria-label="历史版本">
+  <div class="sheet-head">
+    <h2>历史版本</h2>
+    <button class="icon-btn" id="btnCloseHistory" type="button" aria-label="关闭">✕</button>
+  </div>
+  <div class="sheet-body">
+    <div class="notice">电脑上每次保存账本前都会自动留一份（在 <code>data/backups/</code>）。
+      误删、改错了想退回去，就在这里挑一个时间点恢复。
+      <b>恢复会把账本整体换成那一刻的样子</b>——动手之前程序会先把「现在」这一份也留档，所以恢复本身也能再退回来。</div>
+    <div id="historyList"></div>
+  </div>
+</div>
+
+<div class="sheet is-hidden" id="sheetRules" role="dialog" aria-label="自动分类规则">
+  <div class="sheet-head">
+    <h2>自动分类规则</h2>
+    <button class="icon-btn" id="btnCloseRules" type="button" aria-label="关闭">✕</button>
+  </div>
+  <div class="sheet-body">
+    <div class="notice">导入微信 / 支付宝账单时，备注里<b>包含</b>下面这些关键词的账目会直接归到你指定的分类。
+      你在流水里改过某笔导入账目的分类，程序会自动把商户名记成一条规则（排在前面、优先命中）。
+      规则的优先级高于内置词库。</div>
+    <div id="rulesList"></div>
+    <div class="block-title">新增规则</div>
+    <div class="recur-form">
+      <input type="text" id="ruleKeyword" class="input" maxlength="24"
+             placeholder="关键词，比如 星巴克" autocomplete="off">
+      <select id="ruleCat" class="input" aria-label="归到哪个分类"></select>
+      <button class="btn-primary" id="btnRuleAdd" type="button">添加规则</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet is-hidden" id="sheetRecur" role="dialog" aria-label="周期记账">
+  <div class="sheet-head">
+    <h2>周期记账</h2>
+    <button class="icon-btn" id="btnCloseRecur" type="button" aria-label="关闭">✕</button>
+  </div>
+  <div class="sheet-body">
+    <div class="notice">每月到日子自动帮你记一笔（比如房租、话费、会员）。当天打开记账本时补记，
+      同一个月只补一次，删掉的当月不会再来。<b>月末会自动回退</b>：模板写 31 号，
+      2 月就在 28 号（闰年 29 号）补，不会因为那个月没有 31 号而漏掉。</div>
+    <div id="recurList"></div>
+    <div class="block-title">新增模板</div>
+    <div class="recur-form">
+      <div class="seg" id="recurType">
+        <button class="seg-item is-active" type="button" data-type="expense">支出</button>
+        <button class="seg-item" type="button" data-type="income">收入</button>
+      </div>
+      <input type="text" id="recurAmount" class="input" inputmode="decimal" placeholder="金额" autocomplete="off">
+      <select id="recurCat" class="input" aria-label="分类"></select>
+      <input type="text" id="recurNote" class="input" maxlength="40" placeholder="备注，比如 房租" autocomplete="off">
+      <input type="text" id="recurDay" class="input" inputmode="numeric" maxlength="2" placeholder="每月几号（1~31）" autocomplete="off">
+      <button class="btn-primary" id="btnRecurAdd" type="button">添加模板</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet is-hidden" id="sheetHealth" role="dialog" aria-label="数据体检">
+  <div class="sheet-head">
+    <h2>数据体检</h2>
+    <button class="icon-btn" id="btnCloseHealth" type="button" aria-label="关闭">✕</button>
+  </div>
+  <div class="sheet-body">
+    <div class="notice">只找出可疑的账目给你确认，不会自动改任何数据。</div>
+    <div id="healthList"></div>
+  </div>
+</div>
+
+<div class="sheet is-hidden" id="sheetYear" role="dialog" aria-label="年度报告">
+  <div class="sheet-head">
+    <h2>年度报告</h2>
+    <button class="icon-btn" id="btnCloseYear" type="button" aria-label="关闭">✕</button>
+  </div>
+  <div class="sheet-body">
+    <select id="yearSel" class="input" style="width:100%;margin-bottom:14px" aria-label="选择年份"></select>
+    <div id="yearBody"></div>
+  </div>
+</div>
+
 <div class="stopped is-hidden" id="stoppedBox">
   <div class="stopped-card">
     <div class="stopped-mark"><span></span></div>
@@ -285,8 +611,27 @@
 
 <div class="toast is-hidden" id="toast"></div>
 
+<!-- 局域网口令闸：新设备第一次连电脑上的服务时输入一次 -->
+<div class="pin-gate is-hidden" id="pinGate">
+  <div class="pin-card">
+    <h2>输入访问口令</h2>
+    <p>这台设备还没通过验证。输入电脑上「数据管理」里显示的 6 位口令，验证过一次以后就不用再输。</p>
+    <input type="password" id="pinInput" class="input" inputmode="numeric" maxlength="6"
+           placeholder="6 位数字口令" autocomplete="one-time-code">
+    <button class="btn-primary" id="btnPinOk" type="button">记住这台设备</button>
+    <button class="text-btn pin-skip" id="btnPinSkip" type="button">暂不验证，先用浏览器存储记账</button>
+    <div class="pin-err is-hidden" id="pinErr">口令不对，再试试</div>
+  </div>
+</div>
+
+<!-- 纯逻辑层：日期/金额/数据清洗/账单解析/词库匹配（服务端与测试也复用它） -->
+<script src="assets/core.js"></script>
 <!-- 分类词库：想改自动分类就改 assets/分类词库.js，改完刷新页面生效 -->
 <script src="assets/分类词库.js"></script>
 <script src="assets/app.js"></script>
+<!-- PWA：注册 Service Worker（在 app.js 的启动代码之后）。
+     只在 http/https 下注册（双击 index.html 用 file:// 打开时跳过）；
+     /api/ 数据接口永远不缓存，见 sw.js 里的三条铁律。 -->
+<script src="assets/pwa.js"></script>
 </body>
 </html>

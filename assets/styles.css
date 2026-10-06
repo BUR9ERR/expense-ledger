@@ -114,6 +114,8 @@ button{font-family:inherit;color:inherit}
 .sync-badge.is-saved{background:var(--ok-bg);border-color:var(--ok-line);color:var(--ok-text)}
 .sync-badge.is-pending{background:var(--soft);border-color:var(--track);color:var(--muted)}
 .sync-badge.is-offline{background:var(--danger-bg);border-color:var(--danger-line);color:var(--danger-text)}
+/* 服务没启用时的红色提醒：数据只在这个浏览器里，没存到电脑 */
+.sync-badge.is-local{background:var(--danger-bg);border-color:var(--danger-line);color:var(--danger-text)}
 
 #main{
   flex:1;
@@ -385,7 +387,9 @@ select.mp-year{
   color:var(--text);
   border-radius:10px;
   padding:7px 32px 7px 14px;
-  font-size:14px;
+  /* ≥16px：iOS Safari 会对字号小于 16px 的表单控件自动放大页面，
+     放大后固定定位的弹层（含 ✕）会被顶出可视区 */
+  font-size:16px;
   font-weight:600;
   font-variant-numeric:tabular-nums;
   font-family:inherit;
@@ -451,6 +455,11 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 
 .list-filters{display:flex;gap:8px;margin-bottom:14px}
 
+/* 筛选行：左侧一行小标签（类型 / 来源），右侧一排 chip */
+.filter-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.filter-row .list-filters{margin-bottom:0;flex-wrap:wrap}
+.filter-label{font-size:11px;color:var(--faint);flex:none}
+
 .chip{
   border:none;
   background:var(--card);
@@ -476,6 +485,136 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 .list-total b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
 
 .tx-day{margin-bottom:14px}
+
+/* 疑似转账：一行一笔，带复选框 */
+.suspect-row{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  padding:9px 2px;
+  border-bottom:1px solid var(--line);
+  cursor:pointer;
+}
+.suspect-row:last-of-type{border-bottom:none}
+.suspect-row input[type="checkbox"]{
+  flex:none;
+  width:22px;
+  height:22px;
+  margin:2px 0 0;
+  accent-color:var(--invert-bg);
+  cursor:pointer;
+}
+.suspect-main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px}
+.suspect-line{display:flex;justify-content:space-between;gap:10px;font-size:14px}
+.suspect-line b{font-variant-numeric:tabular-nums}
+.suspect-line span{color:var(--faint);font-size:12.5px}
+.suspect-sub{font-size:12px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* 分类管理面板里的每一行 */
+.cat-row{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:8px 2px;
+  border-bottom:1px solid var(--line);
+}
+.cat-row:last-of-type{border-bottom:none}
+.cat-row.is-archived{opacity:.55}
+.cat-row-ico{
+  flex:none;
+  width:32px;
+  height:32px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:9px;
+  background:var(--soft);
+  font-size:16px;
+}
+.cat-row-main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column}
+.cat-row-name{font-size:14px;font-weight:500}
+.cat-row-sub{font-size:11.5px;color:var(--faint)}
+.cat-row .btn-mini{padding:6px 10px;font-size:12px}
+.cat-row .btn-mini.is-danger{color:var(--danger-text);border-color:var(--danger-line)}
+
+/* 日历热力图：7 列网格，颜色深浅表示当天支出多少。
+   窄屏每格约 44px（Apple HIG 的最小触摸目标），所以金额只用颜色 +
+   一个缩写的数字，点某天再去看明细。 */
+.calendar{
+  margin:0 0 14px;
+  padding:12px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:var(--card);
+}
+.calendar.is-hidden{display:none}
+.cal-week{
+  display:grid;
+  grid-template-columns:repeat(7,1fr);
+  gap:4px;
+  margin-bottom:6px;
+  font-size:11px;
+  color:var(--faint);
+  text-align:center;
+}
+.cal-grid{
+  display:grid;
+  grid-template-columns:repeat(7,1fr);
+  gap:4px;
+}
+.cal-cell{
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:1px;
+  aspect-ratio:1 / 1;
+  min-height:44px;
+  border:none;
+  border-radius:10px;
+  background:var(--soft);
+  color:var(--muted);
+  font-family:inherit;
+  cursor:pointer;
+  transition:background .15s,transform .16s var(--ease-out);
+}
+.cal-cell:active{transform:scale(.96)}
+.cal-cell.is-blank{background:transparent;cursor:default}
+.cal-cell .cal-day{font-size:12px;line-height:1}
+.cal-cell .cal-amt{font-size:10px;opacity:.85;font-variant-numeric:tabular-nums}
+/* 色阶：0 = 没支出（用底色的 --soft），1~4 越来越深 */
+.cal-cell.lv1{background:color-mix(in srgb, var(--ok-text) 18%, transparent);color:var(--text)}
+.cal-cell.lv2{background:color-mix(in srgb, var(--ok-text) 38%, transparent);color:var(--text)}
+.cal-cell.lv3{background:color-mix(in srgb, var(--ok-text) 62%, transparent);color:var(--invert-text)}
+.cal-cell.lv4{background:var(--ok-text);color:var(--invert-text)}
+.cal-cell.is-today{outline:2px solid var(--line-strong);outline-offset:1px}
+.cal-legend{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:8px;
+  margin-top:8px;
+  font-size:11px;
+  color:var(--faint);
+}
+.cal-hint{flex:1 1 auto;min-width:0}
+.cal-scale{display:flex;align-items:center;gap:3px;flex:none}
+.cal-scale i{width:10px;height:10px;border-radius:3px;display:inline-block;background:var(--soft)}
+.cal-scale i.lv1{background:color-mix(in srgb, var(--ok-text) 18%, transparent)}
+.cal-scale i.lv2{background:color-mix(in srgb, var(--ok-text) 38%, transparent)}
+.cal-scale i.lv3{background:color-mix(in srgb, var(--ok-text) 62%, transparent)}
+.cal-scale i.lv4{background:var(--ok-text)}
+#btnCalendar.is-active{color:var(--text);font-weight:600}
+
+/* 长列表的浏览器级优化：按「天」这一组跳过屏幕外的布局与绘制。
+   content-visibility: auto 让浏览器根本不算看不见的那些行，
+   contain-intrinsic-size 给个占位高度，免得滚动条长度乱跳。
+   配合 app.js 的触底增量渲染（一页 200 条），几百上千条也不卡。 */
+.tx-day{
+  content-visibility:auto;
+  contain-intrinsic-size:auto 220px;
+}
 
 .tx-day-head{
   display:flex;
@@ -537,6 +676,21 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 
 .tx-cat{font-size:14px;font-weight:500}
 
+/* 账单来源小标签：手动 / 微信 / 支付宝。统一用中性底色，
+   靠文字区分——不引入新颜色，免得跟「支出红 / 收入绿」打架 */
+.tx-src{
+  display:inline-block;
+  margin-left:6px;
+  padding:1px 6px;
+  border-radius:6px;
+  font-size:10px;
+  font-weight:500;
+  line-height:1.5;
+  vertical-align:1px;
+  background:var(--soft);
+  color:var(--muted);
+}
+
 .tx-note{
   font-size:12px;
   color:var(--faint);
@@ -557,6 +711,18 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 
 .empty{text-align:center;color:var(--faint);font-size:14px;padding:56px 20px}
 .empty-ico{font-size:30px;margin-bottom:10px;opacity:.7}
+.empty-reset{
+  display:block;
+  margin:16px auto 0;
+  border:1px solid var(--line-strong);
+  background:transparent;
+  color:var(--muted);
+  border-radius:10px;
+  padding:8px 16px;
+  font-size:13px;
+  cursor:pointer;
+}
+.empty-reset:active{background:var(--soft)}
 
 .hero{
   background:var(--card);
@@ -715,8 +881,15 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
   background:var(--card);
   border-radius:20px 20px 0 0;
   max-height:84vh;
-  overflow-y:auto;
-  -webkit-overflow-scrolling:touch;
+  /* dvh 跟随 Safari 收起/展开的地址栏动态变化，支持的浏览器用小视口，
+     保证头部不会顶到地址栏底下；不支持的回落到上面那行 */
+  max-height:84dvh;
+  /* 滚动只发生在 .sheet-body：头部（含 ✕）是固定区域，滚到哪里都在。
+     以前整个 .sheet 滚、头部靠 position:sticky 钉住——iOS 上 sticky 配合
+     惯性滚动会失灵，往下滑 ✕ 就跟内容一起滚出屏幕，抽屉关不掉 */
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
   padding-bottom:calc(var(--safe-b) + 12px);
   box-shadow:0 -8px 40px rgba(0,0,0,.16);
   animation:sheetUp .24s cubic-bezier(.2,.8,.3,1);
@@ -724,20 +897,30 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 
 @keyframes sheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
 
+/* 关闭动画：配合 app.js 的 is-closing（210ms 后 display:none）。
+   200ms 先收完；ease-in 加速滑出符合「离开就快走」的手感；
+   多滑 32px 是给桌面端 bottom:24px 的定位留的余量，确保完全出屏 */
+.sheet.is-closing{animation:sheetDown .2s cubic-bezier(.32,0,.67,0) forwards}
+@keyframes sheetDown{from{transform:translateY(0)}to{transform:translateY(calc(100% + 32px))}}
+
 .sheet-head{
   display:flex;
   align-items:center;
   justify-content:space-between;
   padding:16px 18px 10px;
-  position:sticky;
-  top:0;
-  background:var(--card);
+  flex:none;
   border-radius:20px 20px 0 0;
 }
 
 .sheet-head h2{font-size:16px;font-weight:600;margin:0}
 
-.sheet-body{padding:0 14px 8px}
+.sheet-body{
+  padding:0 14px 8px;
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+  flex:1 1 auto;
+  min-height:0;
+}
 
 .row-btn{
   display:block;
@@ -818,6 +1001,79 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 .bill-row b.is-expense{color:var(--text)}
 .bill-foot{font-size:11.5px;color:var(--faint);margin:8px 0 2px;line-height:1.5}
 
+/* 「本月」页的月份导航、环比、今天还能花 */
+.sum-month{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  margin:2px 0 12px;
+}
+.sum-month .month-label{min-width:150px;justify-content:center}
+
+.hero-delta{
+  margin-top:10px;
+  font-size:12.5px;
+  color:var(--muted);
+}
+.hero-delta.is-hidden{display:none}
+.hero-delta.is-bad{color:var(--danger-text)}     /* 支出涨了 */
+.hero-delta.is-good{color:var(--ok-text)}        /* 支出降了 */
+
+.safe-card{
+  margin:0 0 14px;
+  padding:14px 16px;
+  border-radius:16px;
+  background:var(--card);
+  border:1px solid var(--line);
+}
+.safe-card.is-hidden{display:none}
+.safe-label{font-size:12px;color:var(--faint);margin-bottom:4px}
+.safe-amount{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.safe-hint{font-size:11.5px;color:var(--faint);margin-top:6px;line-height:1.5}
+.safe-card.is-tight .safe-amount{color:var(--danger-text)}
+.safe-card.is-over{border-color:var(--danger-line);background:var(--danger-bg)}
+.safe-card.is-over .safe-amount,
+.safe-card.is-over .safe-label,
+.safe-card.is-over .safe-hint{color:var(--danger-text)}
+
+/* 6 个月趋势：正在看的月份 vs 真实的今天所在月 */
+.trend-bar.is-now{outline:1px dashed var(--line-strong);outline-offset:1px}
+
+/* 带复选框的设置行（预算的「结转上月结余」等） */
+.checkrow{
+  display:flex;
+  align-items:flex-start;
+  gap:8px;
+  margin:12px 2px 4px;
+  font-size:13.5px;
+  color:var(--text);
+  cursor:pointer;
+  line-height:1.45;
+}
+.checkrow input[type="checkbox"]{
+  flex:none;
+  width:20px;
+  height:20px;
+  margin:1px 0 0;
+  accent-color:var(--invert-bg);
+  cursor:pointer;
+}
+
+/* 金额框下方的算式结果提示：输入 23+18 时显示「= ¥41」 */
+.amount-hint{
+  margin:-8px 4px 14px;
+  font-size:12.5px;
+  color:var(--muted);
+  text-align:right;
+}
+.amount-hint.is-hidden{display:none}
+.amount-hint.is-bad{color:var(--danger-text)}
+
+/* 不计收支的金额：中性色、不带正负号，一眼区分「这笔不算花掉」 */
+.tx-amt.is-transfer{color:var(--muted)}
+.is-faint{color:var(--faint)}
+
 .notice code{
   font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
   font-size:11.5px;
@@ -834,6 +1090,227 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 }
 
 .mobile-title{font-size:13px;font-weight:500;margin-bottom:6px}
+
+/* 回收站列表 */
+.trash-item{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  border-bottom:1px solid var(--line);
+  padding:10px 2px;
+}
+.trash-item:last-of-type{border-bottom:none}
+.trash-main{flex:1;min-width:0}
+.trash-line{display:flex;justify-content:space-between;gap:10px;font-size:14px;font-weight:500}
+.trash-line b{font-variant-numeric:tabular-nums}
+.trash-sub{display:block;font-size:12px;color:var(--faint);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* 本月预算卡与排行里的预算注释 */
+.budget-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.budget-bar{height:10px;border-radius:999px;background:var(--track);overflow:hidden;margin:4px 0 8px}
+.budget-bar i{display:block;height:100%;border-radius:999px;background:var(--ok-text);transition:width .3s var(--ease-out)}
+.budget-bar i.is-over{background:var(--danger-text)}
+.budget-text{font-size:12.5px;color:var(--muted)}
+.budget-text.is-over{color:var(--danger-text)}
+.budget-none{font-size:12.5px;color:var(--faint)}
+.rank-budget{font-size:11.5px;color:var(--faint);margin-top:4px}
+.rank-budget.is-over{color:var(--danger-text)}
+.budget-cat{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)}
+.budget-cat span{font-size:13.5px}
+.budget-cat .input{width:110px;flex:none;text-align:right;padding:8px 10px}
+.sheet-actions{display:flex;gap:12px;justify-content:space-between;align-items:center;margin-top:16px}
+
+/* 流水搜索行与「显示全部」。
+   字号必须 ≥16px：iOS Safari 在聚焦 font-size < 16px 的输入框时会
+   自动放大整个页面（而且不会自动缩回去）。这里曾经是 13.5px，
+   在 iPhone 上点一下搜索框页面就放大一截。
+   想让字看上去小一点，改颜色/字重，别改字号。 */
+.search-row{margin-bottom:12px}
+.search-row .input{width:100%;padding:10px 14px;font-size:16px}
+.list-more{
+  display:block;
+  width:100%;
+  margin:10px 0 4px;
+  padding:10px;
+  border:none;
+  border-radius:12px;
+  background:var(--soft);
+  color:var(--muted);
+  font-size:12.5px;
+  cursor:pointer;
+}
+
+/* 周期记账的模板表单 */
+.recur-form{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+.recur-form .input{width:100%}
+.recur-form .seg{margin-bottom:2px}
+
+/* 局域网口令提示行与输入闸 */
+.pin-line{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  padding:8px 6px;
+  font-size:12.5px;
+  color:var(--muted);
+}
+.pin-line b{color:var(--text);letter-spacing:.12em;font-size:15px}
+
+/* 流水批量删除模式 */
+.batch-bar{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-bottom:10px;
+}
+.batch-bar .batch-count{flex:1;text-align:right;font-size:12.5px;color:var(--muted)}
+.btn-mini[disabled]{opacity:.45;cursor:default}
+.tx-check{
+  flex:none;
+  align-self:center;
+  width:20px;
+  height:20px;
+  border-radius:50%;
+  border:2px solid var(--line-strong);
+  box-sizing:border-box;
+}
+.tx-item.is-selected{background:var(--soft)}
+.tx-item.is-selected .tx-check{border-color:var(--ok-text);background:var(--ok-text)}
+.tx-item.is-selected .tx-check::after{
+  content:'';
+  display:block;
+  width:5px;
+  height:9px;
+  border:solid var(--invert-text);
+  border-width:0 2px 2px 0;
+  transform:rotate(45deg);
+  margin:2px auto 0;
+}
+#btnBatch.is-active{color:var(--text);font-weight:600}
+
+/* 金额 / 日期范围筛选行 */
+.range-row{display:flex;gap:6px;margin-bottom:12px}
+.range-row .input{min-width:0;padding:9px 8px;font-size:16px;text-align:center}
+.range-row .input[type="text"]{flex:1}
+.range-row .input[type="date"]{flex:1.4}
+
+/* 分类排行可点：跳到按该分类筛选的流水 */
+.rank-item{cursor:pointer}
+.rank-item:hover .rank-name{text-decoration:underline}
+
+/* 数据体检 */
+.health-group{border:1px solid var(--line);border-radius:12px;padding:4px 10px;margin-bottom:12px}
+.health-group .trash-item:last-of-type{border-bottom:none}
+
+/* 按住拖动连选：行内文字不许被选中/长按弹出菜单，抢在手势前 */
+.tx-item{
+  user-select:none;
+  -webkit-user-select:none;
+  -webkit-touch-callout:none;
+}
+.tx-list.is-painting{cursor:ns-resize}
+
+.pin-gate{
+  position:fixed;
+  inset:0;
+  z-index:90;
+  background:var(--scrim);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+}
+.pin-card{
+  width:100%;
+  max-width:340px;
+  background:var(--card);
+  border-radius:20px;
+  padding:24px 20px;
+  box-shadow:var(--shadow);
+}
+.pin-card h2{font-size:17px;font-weight:600;margin:0 0 8px}
+.pin-card p{font-size:13px;color:var(--muted);line-height:1.55;margin:0 0 14px}
+.pin-card .input{width:100%;text-align:center;font-size:20px;letter-spacing:.35em;margin-bottom:12px}
+.pin-skip{display:block;width:100%;margin-top:10px;text-align:center}
+.pin-err{font-size:12.5px;color:var(--danger-text);margin-top:10px;text-align:center}
+
+/* 修改口令（只在本机显示：没通过验证的设备看不到这一段） */
+.pin-edit{
+  margin:4px 6px 12px;
+  padding:12px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+}
+.pin-edit.is-hidden{display:none}
+.pin-edit-title{font-size:13px;font-weight:500;margin-bottom:8px}
+.pin-edit .input{
+  width:100%;
+  margin-bottom:8px;
+  text-align:center;
+  letter-spacing:.3em;
+  font-size:16px;   /* ≥16px：iOS 聚焦时不会自动放大整页 */
+}
+.pin-edit .btn-mini{width:100%;margin-top:2px}
+.pin-edit-hint{font-size:12px;color:var(--faint);line-height:1.5;margin-top:8px}
+.pin-edit-hint.is-warn{color:var(--danger-text)}
+.pin-edit-hint.is-ok{color:var(--ok-text)}
+
+/* 流水页的分类筛选：可多选的一排 chip，横向滚动（分类可能有十六个，
+   铺满整个屏幕会把列表挤下去）。滚动条藏掉，靠边缘渐隐提示还能滑。 */
+.filter-row.has-chips{flex-wrap:wrap}       /* chip 行放不下就换行，标签不至于被压扁 */
+.cat-filter-wrap{
+  position:relative;
+  flex:1 1 auto;
+  min-width:0;
+}
+.cat-filter-scroll{
+  display:flex;
+  gap:8px;
+  overflow-x:auto;
+  padding:2px 0;
+  scrollbar-width:none;
+  -webkit-overflow-scrolling:touch;
+}
+.cat-filter-scroll::-webkit-scrollbar{display:none}
+.cat-filter-scroll .chip{
+  flex:none;
+  padding:6px 12px;
+  font-size:12.5px;
+  white-space:nowrap;
+}
+/* 多选时选中项要更明显：实心 + 一点内阴影，一眼看出选了哪几个 */
+.cat-filter-scroll .chip.is-active{
+  background:var(--invert-bg);
+  color:var(--invert-text);
+  font-weight:500;
+}
+.cat-filter-scroll .chip.is-reset{
+  border:1px dashed var(--line-strong);
+  background:transparent;
+  color:var(--muted);
+}
+.cat-filter-scroll .chip.is-reset.is-active{
+  border-style:solid;
+  border-color:var(--invert-bg);
+}
+
+/* 口令行：整行可点即复制（和「复制地址」一个手感） */
+.pin-value{
+  flex:1 1 auto;
+  min-width:0;
+  cursor:pointer;
+  border-radius:8px;
+  padding:4px 6px;
+  margin:-4px -6px;
+  transition:background .15s;
+}
+.pin-value:hover{background:var(--soft)}
+.pin-value:active{background:var(--soft)}
+.pin-value:focus-visible{outline:2px solid var(--line-strong);outline-offset:1px}
+.pin-value.is-copied{background:var(--ok-bg)}
 
 .mobile-url{
   font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
@@ -1008,6 +1485,8 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
   .date-row .input{width:100%}
   .quick-dates{width:100%}
   .quick-dates button{padding:10px 0}
+  /* 窄屏：分类 chip 行独占一行，「清除筛选」跟在下面，不挤成一条 */
+  .cat-filter-wrap{flex-basis:100%}
 }
 
 /* 系统开了「减弱动态效果」时：去掉位移类动效，只保留必要的淡入淡出 */
@@ -1048,3 +1527,28 @@ html[data-theme="dark"]{
     --toast-bg:rgba(44,44,46,.96);--toast-text:#F2F2F7;
     --shadow:0 1px 2px rgba(0,0,0,.5),0 10px 30px rgba(0,0,0,.5);
 }
+
+/* ---------- 局域网访问开关（iOS 风格拨动开关） ---------- */
+
+.switchrow{
+  display:flex;align-items:center;gap:14px;
+  padding:12px 14px;margin-bottom:10px;
+  background:var(--card);border-radius:var(--radius);
+}
+.switchrow.is-hidden{display:none}
+.switch-text{flex:1;display:flex;flex-direction:column;gap:2px;min-width:0}
+.switch-text b{font-size:15px;color:var(--text)}
+.switch-text span{font-size:12px;line-height:1.5;color:var(--muted)}
+.switch{
+  position:relative;flex:none;width:51px;height:31px;
+  border:none;border-radius:16px;padding:0;cursor:pointer;
+  background:var(--soft);transition:background .2s var(--ease-out);
+}
+.switch .knob{
+  position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;
+  background:#fff;box-shadow:0 2px 4px rgba(0,0,0,.25);
+  transition:left .2s var(--ease-out);
+}
+.switch.is-on{background:var(--income)}
+.switch.is-on .knob{left:22px}
+.switch:disabled{opacity:.5;cursor:default}

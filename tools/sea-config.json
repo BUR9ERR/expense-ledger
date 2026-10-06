@@ -1,0 +1,21 @@
+{
+  "main": "dist/sea-entry.js",
+  "output": "dist/ledger-sea.blob",
+  "disableExperimentalSEAWarning": true,
+  "assets": {
+    "index.html": "index.html",
+    "manifest.webmanifest": "manifest.webmanifest",
+    "sw.js": "sw.js",
+    "assets/theme-init.js": "assets/theme-init.js",
+    "assets/app.js": "assets/app.js",
+    "assets/pwa.js": "assets/pwa.js",
+    "assets/core.js": "assets/core.js",
+    "assets/styles.css": "assets/styles.css",
+    "assets/分类词库.js": "assets/分类词库.js",
+    "assets/icon.svg": "assets/icon.svg",
+    "assets/icon-180.png": "assets/icon-180.png",
+    "assets/icon-192.png": "assets/icon-192.png",
+    "assets/icon-512.png": "assets/icon-512.png",
+    "assets/icon-maskable-512.png": "assets/icon-maskable-512.png"
+  }
+}
