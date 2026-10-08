@@ -81,18 +81,21 @@ test('sanitize：逐笔清洗账目（坏账丢弃），缺分类回落默认分
 
 test('isServable 白名单：只放行 index.html 与 assets/', () => {
   const root = path.resolve(__dirname, '..');
-  const ok = (rel) => S.isServable(path.join(root, rel));
+  /* 一律用 path.join 逐段拼路径。直接写 'assets\\app.js' 只在 Windows 上成立：
+     POSIX 的 path 不认反斜杠，整串会变成一个叫 "assets\app.js" 的**单段**文件名，
+     于是落进「根目录白名单」分支被拒——断言假失败（CI 上就是这么红的）。 */
+  const ok = (...segs) => S.isServable(path.join(root, ...segs));
   assert.ok(ok('index.html'));
-  assert.ok(ok('assets\\app.js'));
-  assert.ok(ok('assets\\core.js'));
+  assert.ok(ok('assets', 'app.js'));
+  assert.ok(ok('assets', 'core.js'));
   assert.ok(ok('manifest.webmanifest'), 'PWA manifest 放行');
   assert.ok(ok('sw.js'), 'Service Worker 放行');
-  assert.ok(!ok('data\\ledger.json'), 'data 目录不放行');
-  assert.ok(!ok('DATA\\ledger.json'), 'Windows 大小写不区分，统一转小写后仍不放行');
-  assert.ok(!ok('.git\\config'), '隐藏文件不放行');
+  assert.ok(!ok('data', 'ledger.json'), 'data 目录不放行');
+  assert.ok(!ok('DATA', 'ledger.json'), '大小写换个写法也拦得住（比较前统一转小写）');
+  assert.ok(!ok('.git', 'config'), '隐藏文件不放行');
   assert.ok(!ok('README.md'), '根目录只放行 index.html');
   assert.ok(!ok('server.js'));
-  assert.ok(!ok('..\\outside.txt'), '越出根目录不放行');
+  assert.ok(!ok('..', 'outside.txt'), '越出根目录不放行');
 });
 
 /* ---------- 同站校验 ---------- */
@@ -179,10 +182,14 @@ test('页面响应带 CSP 等安全头，且不允许内联脚本与嵌套', () 
 
 /* ---------- 静态检查脚本能跑通（前端 id 引用 / 文件清单） ---------- */
 
-test('tools/check-dom.js：index.html 与 app.js 的 id、缓存清单一致', () => {
-  const { execFileSync } = require('node:child_process');
-  const out = execFileSync(process.execPath, [path.join(__dirname, '..', 'tools', 'check-dom.js')], {
-    encoding: 'utf8'
+test('tools/check-dom.js：index.html 与 app.js 的 id、缓存清单一致', async () => {
+  const { execFile } = require('node:child_process');
+  /* 异步 execFile，不是 execFileSync：本机上「同步」spawn 同一个 node.exe 会稳定拿到
+     EBUSY（Windows 的进程/文件锁），异步方式没有这个问题；Linux 上两者一样。 */
+  const out = await new Promise((resolve, reject) => {
+    execFile(process.execPath, [path.join(__dirname, '..', 'tools', 'check-dom.js')],
+      { encoding: 'utf8' },
+      (err, stdout, stderr) => (err ? reject(new Error(String(stderr || err.message).trim())) : resolve(stdout)));
   });
   assert.match(out, /前端静态检查通过/);
 });
