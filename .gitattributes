@@ -8,6 +8,7 @@
 *.cmd   text eol=crlf
 
 # 其余文本文件统一 LF
+LICENSE text eol=lf
 *.js    text eol=lf
 *.css   text eol=lf
 *.html  text eol=lf
