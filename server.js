@@ -127,6 +127,41 @@ function stamp() {
          String(d.getMilliseconds() + 1000).slice(1);
 }
 
+/* 同毫秒内连续备份时，时间戳只到毫秒会撞名，copyFileSync 会把第一份静默覆盖掉
+   （CI 的 Linux runner 磁盘快，两次备份落在同一毫秒是常事，本地 Windows 反而难复现）。
+   重名时追加字母后缀 a、b…、z、aa…。选字母而非数字：字母 ASCII 码大于 '.'，
+   字典序恰好是「无后缀（首份）< a < b」，按文件名排序裁剪旧备份时顺序与创建顺序一致。 */
+function backupSuffix(n) {
+  let s = '';
+  while (n > 0) {
+    s = String.fromCharCode(97 + ((n - 1) % 26)) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+/* 字母后缀转回序号（a=1、z=26、aa=27），与 backupSuffix 互逆 */
+function suffixToN(s) {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    n = n * 26 + (s.charCodeAt(i) - 96);
+  }
+  return n;
+}
+function uniqueBackupName() {
+  const base = 'ledger-' + stamp();
+  /* 关键：取「现有同时间戳文件里的最大序号 +1」，而不是从空缺位置开始填。
+     裁剪旧备份会删掉最早的无后缀文件，留下空缺；若新备份去填这个空缺，
+     它在字典序里又排最旧，会被同一次裁剪立刻删掉（等于这份备份白做）。 */
+  let max = -1;
+  const re = new RegExp('^' + base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([a-z]*)\\.json$');
+  fs.readdirSync(BACKUP_DIR).forEach(function (f) {
+    const m = f.match(re);
+    if (m) { max = Math.max(max, suffixToN(m[1])); }
+  });
+  const n = max + 1;
+  return path.join(BACKUP_DIR, base + (n === 0 ? '' : backupSuffix(n)) + '.json');
+}
+
 function snapshotBackup() {
   try {
     ensureDirs();
@@ -148,7 +183,7 @@ function snapshotBackup() {
 
     if (hashes.indexOf(hash) >= 0) { return; }
 
-    fs.copyFileSync(DATA_FILE, path.join(BACKUP_DIR, 'ledger-' + stamp() + '.json'));
+    fs.copyFileSync(DATA_FILE, uniqueBackupName());
     hashes.push(hash);
 
     const files = fs.readdirSync(BACKUP_DIR)
