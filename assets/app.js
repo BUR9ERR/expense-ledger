@@ -117,12 +117,30 @@ var isTransfer = function (t) { return t === 'transfer'; };
 /* 流水列表一页渲染多少条（触底再加一页，见 watchListMore） */
 var LIST_PAGE = 200;
 
+var motionQuery = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
+/* JS 只读 CSS 的时长令牌，不再各写一份 210 / 1400 之类的魔法数字 */
+function motionMs(name, fallback) {
+  var raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  var n = parseFloat(raw);
+  if (!isFinite(n)) { return fallback; }
+  return raw.indexOf('ms') >= 0 ? n : n * 1000;
+}
+
 var toastTimer = null;
+var toastHideTimer = null;
 function toast(msg, ms) {
+  clearTimeout(toastTimer);
+  clearTimeout(toastHideTimer);
   elToast.textContent = msg;
   elToast.classList.remove('is-hidden');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(function () { elToast.classList.add('is-hidden'); }, ms || 2200);
+  elToast.classList.remove('is-leaving');
+  toastTimer = setTimeout(function () {
+    elToast.classList.add('is-leaving');
+    toastHideTimer = setTimeout(function () {
+      elToast.classList.add('is-hidden');
+      elToast.classList.remove('is-leaving');
+    }, motionMs('--dur-fade', 160) + 30);
+  }, ms || 2200);
 }
 
 /* ---------- 存储 ---------- */
@@ -1149,7 +1167,7 @@ function jumpToDay(day) {
   if (target) {
     scrollTxIntoView(target, true);
     target.classList.add('is-flash');
-    setTimeout(function () { target.classList.remove('is-flash'); }, 1400);
+    setTimeout(function () { target.classList.remove('is-flash'); }, motionMs('--dur-flash', 1300) + 100);
   }
 }
 
@@ -1349,14 +1367,14 @@ function flashTx(id) {
   setTimeout(function () { scrollTxIntoView(target, false); }, 320);
 
   target.classList.add('is-flash');
-  setTimeout(function () { target.classList.remove('is-flash'); }, 1400);
+  setTimeout(function () { target.classList.remove('is-flash'); }, motionMs('--dur-flash', 1300) + 100);
 }
 
 function scrollTxIntoView(target, smooth) {
   var r = target.getBoundingClientRect();
   if (!smooth && r.top >= 0 && r.bottom <= window.innerHeight) { return; }
   try {
-    target.scrollIntoView({ block: 'center', behavior: smooth ? 'smooth' : 'auto' });
+    target.scrollIntoView({ block: 'center', behavior: smooth && !motionQuery.matches ? 'smooth' : 'auto' });
   } catch (e) {
     /* 老浏览器不认参数对象 */
     if (!smooth) {
@@ -1845,7 +1863,7 @@ function renderBudget() {
   }
 
   body.innerHTML =
-    '<div class="budget-bar"><i class="' + (over ? 'is-over' : '') + '" style="width:' + pct + '%"></i></div>' +
+    '<div class="budget-bar"><i class="' + (over ? 'is-over' : '') + '" style="--p:' + (pct / 100) + '"></i></div>' +
     '<div class="budget-text' + (over ? ' is-over' : '') + '">已用 ' + fmtMoney(spentCents) +
     ' / ' + fmtMoney(totalCents) + '（' + pct + '%）' +
     (over ? '，已超支 ' + fmtMoney(-leftCents)
@@ -2213,7 +2231,7 @@ function renderRank(expenseList, totalCents, budCtx) {
   /* 分类预算也走 core 的结转结果（budCtx.cats[id]），单位是元 */
   var catBud = (budCtx && budCtx.cats) || {};
   var html = '';
-  rows.forEach(function (r) {
+  rows.forEach(function (r, idx) {
     var c = categoryById(r.id);
     var pct = Math.max(2, Math.round(r.cents / max * 100));
     var share = totalCents > 0 ? Math.round(r.cents / totalCents * 100) : 0;
@@ -2231,16 +2249,16 @@ function renderRank(expenseList, totalCents, budCtx) {
         '<span class="rank-name">' + esc(c.icon) + ' ' + esc(c.name) + '</span>' +
         '<span class="rank-val"><b>' + fmtMoney(r.cents) + '</b> \u00B7 ' + share + '%</span>' +
       '</div>' +
-      '<div class="rank-bar"><i style="width:' + pct + '%;background:' + safeColor(c.color, '#9AA0A6') + '"></i></div>' +
+      '<div class="rank-bar"><i style="--i:' + Math.min(idx, 5) + ';width:' + pct + '%;background:' + safeColor(c.color, '#9AA0A6') + '"></i></div>' +
       budLine +
       '</div>';
   });
   elRankList.innerHTML = html;
-  /* 条形「生长」入场：先归零（scaleX(0)），强制回流后再加 is-in 放行过渡。
-     直接建好就加类的话，浏览器会把初始态和终态合并成一次绘制，动画就没了。 */
+  /* 两帧后放行过渡：避免同步 offsetWidth 强制回流，低功耗设备更稳。 */
   elRankList.classList.remove('is-in');
-  void elRankList.offsetWidth;
-  elRankList.classList.add('is-in');
+  requestAnimationFrame(function () {
+    requestAnimationFrame(function () { elRankList.classList.add('is-in'); });
+  });
 }
 
 function renderTrend() {
@@ -2273,7 +2291,7 @@ function renderTrend() {
     var cls = mKey === key ? ' is-cur' : (mKey === curKey ? ' is-now' : '');
     bars += '<div class="trend-col">' +
       '<span class="trend-val">' + (v > 0 ? fmtShort(v) : '') + '</span>' +
-      '<div class="trend-bar' + cls + '" style="height:' + h + 'px"></div>' +
+      '<div class="trend-bar' + cls + '" style="--i:' + idx + ';height:' + h + 'px"></div>' +
       '</div>';
     labels += '<span>' + (mo.m === 1 ? mo.y + '年1月' : mo.m + '\u6708') + '</span>';
   });
@@ -2281,8 +2299,9 @@ function renderTrend() {
   elTrendChart.innerHTML = '<div class="trend-bars">' + bars + '</div>' +
                            '<div class="trend-label">' + labels + '</div>';
   elTrendChart.classList.remove('is-in');
-  void elTrendChart.offsetWidth;
-  elTrendChart.classList.add('is-in');
+  requestAnimationFrame(function () {
+    requestAnimationFrame(function () { elTrendChart.classList.add('is-in'); });
+  });
 }
 
 /* ============================================================
@@ -2290,12 +2309,18 @@ function renderTrend() {
    ============================================================ */
 
 function go(page, keepScroll) {
+  var prevPage = state.page;
   state.page = page;
   closeMonthPicker();
   try { localStorage.setItem('ledger.v1.page', page); } catch (e) { /* 隐私模式忽略 */ }
+  var order = ['record', 'list', 'summary'];
+  var dir = order.indexOf(page) >= order.indexOf(prevPage) ? 1 : -1;
   var pages = document.querySelectorAll('.page');
   for (var i = 0; i < pages.length; i++) {
-    pages[i].classList.toggle('is-active', pages[i].getAttribute('data-page') === page);
+    var active = pages[i].getAttribute('data-page') === page;
+    /* 页签切换有方向；编辑完返回保持滚动时只做轻微上浮 */
+    pages[i].style.setProperty('--page-x', (!keepScroll && prevPage !== page ? dir * 8 : 0) + 'px');
+    pages[i].classList.toggle('is-active', active);
   }
   var tabs = elTabbar.querySelectorAll('.tab');
   for (var j = 0; j < tabs.length; j++) {
@@ -2576,7 +2601,7 @@ function openSheet(el) {
 
 function closeSheets() {
   /* 退出动画：从哪进来就往哪出去（底部滑回），收完再真正隐藏。
-     进场稍慢、退场更快（210ms < 240ms），重复触发直接忽略。 */
+     进场稍慢、退场更快，时长从 CSS 的 --dur-sheet-out 读取；重复触发直接忽略。 */
   if (sheetCloseTimer) { return; }
   var closing = [elMask].concat(allSheets()).filter(function (s) {
     return !s.classList.contains('is-hidden');
@@ -2589,7 +2614,7 @@ function closeSheets() {
       s.classList.remove('is-closing');
     });
     sheetCloseTimer = null;
-  }, 210);
+  }, motionMs('--dur-sheet-out', 200) + 30);
 }
 
 /* 子面板（导入账本 / 导入账单 / 回收站 / 周期记账）只收自己，回到数据管理
@@ -2610,7 +2635,7 @@ function closeSubToData() {
     sub.classList.add('is-hidden');
     sub.classList.remove('is-closing');
     sheetCloseTimer = null;
-  }, 210);
+  }, motionMs('--dur-sheet-out', 200) + 30);
 }
 
 /* ============================================================
