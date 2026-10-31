@@ -3,11 +3,11 @@ chcp 65001 >nul
 title 记账本 - 打包单文件 exe
 cd /d "%~dp0.."
 
-rem Pack the whole app into dist\记账本.exe (Node SEA).
+rem Pack the whole app into dist\<app>.exe (Node SEA).
 rem Build machine needs Node.js installed; the exe itself does not.
-rem See README "打包成 exe" for usage and how to revert.
+rem See the README section on packing into a single exe for usage / how to revert.
 
-rem find node.exe - same order as 启动记账本.bat
+rem find node.exe - same order as the launcher bat
 set "NODE_EXE="
 if not defined NODE_EXE if exist "%~dp0..\node\node.exe" set "NODE_EXE=%~dp0..\node\node.exe"
 if not defined NODE_EXE for %%i in (node.exe) do if not defined NODE_EXE set "NODE_EXE=%%~$PATH:i"
