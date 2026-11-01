@@ -19,3 +19,6 @@ dist/
 
 # 未被 README 引用的桌面截图，仅本机留存，不进版本库
 docs/preview-desktop.png
+
+# 内部开发日志：只在本机留存，不对外发布
+docs/开发日志.md
