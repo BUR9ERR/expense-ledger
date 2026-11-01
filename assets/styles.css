@@ -63,6 +63,7 @@ body{
 }
 
 button{font-family:inherit;color:inherit}
+button:focus-visible,[role="button"]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 .is-hidden{display:none !important}
 
@@ -143,13 +144,28 @@ button{font-family:inherit;color:inherit}
 @keyframes toastIn{from{opacity:0;transform:translate(-50%,8px) scale(.96)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
 @keyframes toastOut{from{opacity:1;transform:translate(-50%,0) scale(1)}to{opacity:0;transform:translate(-50%,4px) scale(.98)}}
 
+/* 首屏读取：内容先不露面，避免异步账本返回前短暂闪成“¥0 / 空账本” */
+.boot-loading{display:none;padding:4px 0 24px;color:var(--muted)}
+body.is-booting .page{visibility:hidden}
+body.is-booting .boot-loading{display:block}
+.boot-hero{height:112px;border-radius:var(--radius);background:var(--card);animation:bootPulse 1.1s ease-in-out infinite}
+.boot-line{height:52px;border-radius:var(--radius);background:var(--card);margin-top:12px;animation:bootPulse 1.1s ease-in-out infinite}
+.boot-line.is-short{width:68%}
+.boot-loading p{margin:10px 4px 0;font-size:13px}
+@keyframes bootPulse{50%{opacity:.55}}
+
 .record-head{
   display:flex;
   align-items:center;
   justify-content:space-between;
+  flex-wrap:wrap;
+  gap:8px;
   margin-bottom:16px;
   min-height:36px;
 }
+.record-head #typeSwitch{min-width:0;max-width:100%}
+.record-head .seg-item{white-space:nowrap}
+.record-head .text-btn{flex:none}
 
 .seg{
   display:inline-flex;
@@ -192,11 +208,14 @@ button{font-family:inherit;color:inherit}
   align-items:baseline;
   gap:6px;
   background:var(--card);
-  border:none;
+  border:1px solid transparent;
   border-radius:var(--radius);
   padding:16px 20px;
   margin-bottom:16px;
+  transition:border-color var(--dur-press),box-shadow var(--dur-press);
 }
+.amount-box:focus-within{border-color:var(--line-strong);box-shadow:0 0 0 3px var(--soft)}
+.amount-box.is-bad{border-color:var(--danger-line);box-shadow:0 0 0 3px var(--danger-bg)}
 
 .amount-cur{
   font-size:26px;
@@ -212,9 +231,9 @@ button{font-family:inherit;color:inherit}
   border:none;
   outline:none;
   background:transparent;
-  font-size:40px;
+  font-size:clamp(32px,9vw,40px);
   font-weight:600;
-  letter-spacing:-.01em;
+  letter-spacing:-.02em;
   color:var(--expense);
   font-variant-numeric:tabular-nums;
   padding:0;
@@ -225,7 +244,10 @@ button{font-family:inherit;color:inherit}
 
 body[data-type="income"] .amount-cur,
 body[data-type="income"] .amount-input{color:var(--income)}
-body[data-type="income"] .btn-primary{background:var(--income)}
+body[data-type="transfer"] .amount-cur,
+body[data-type="transfer"] .amount-input{color:var(--muted)}
+/* 类型色只影响记账主按钮，不能扩散到导入、预算、口令等抽屉 */
+body[data-type="income"] [data-page="record"] .btn-primary{background:var(--income)}
 
 .block{margin-bottom:16px}
 .block-title{font-size:13px;color:var(--muted);margin:0 0 8px 2px;font-weight:500}
@@ -265,7 +287,8 @@ body[data-type="income"] .btn-primary{background:var(--income)}
   align-items:center;
   justify-content:center;
   background:var(--soft);
-  transition:background .15s,box-shadow .15s;
+  opacity:.74;
+  transition:background var(--dur-press),box-shadow var(--dur-press),opacity var(--dur-press);
 }
 
 .cat-item .cat-name{
@@ -277,8 +300,28 @@ body[data-type="income"] .btn-primary{background:var(--income)}
   max-width:100%;
 }
 
-.cat-item.is-active .cat-ico{background:var(--soft-c);box-shadow:inset 0 0 0 2px var(--c)}
-.cat-item.is-active .cat-name{color:var(--text);font-weight:500}
+.cat-item.is-active .cat-ico{background:var(--soft-c);box-shadow:inset 0 0 0 2px var(--c);opacity:1}
+.cat-item.is-active .cat-name{color:var(--text);font-weight:600}
+
+.cat-empty{
+  grid-column:1 / -1;
+  padding:22px 12px;
+  text-align:center;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.6;
+}
+.cat-empty .btn-mini{margin-top:12px}
+
+@media (hover:hover){
+  [data-page="record"] .cat-item:hover{background:var(--soft)}
+  [data-page="record"] .cat-item:hover .cat-ico{opacity:1}
+  [data-page="record"] .seg-item:not(.is-active):hover{color:var(--text);background:var(--soft)}
+  [data-page="record"] .quick-dates button:not(.is-active):hover{background:var(--soft);color:var(--text)}
+  .chip:not(.is-active):hover{background:var(--soft);color:var(--text)}
+  .btn-mini:not([disabled]):hover{background:var(--soft)}
+  .text-btn:hover{color:var(--text)}
+}
 
 .date-row{display:flex;gap:8px;align-items:stretch}
 
@@ -295,7 +338,8 @@ body[data-type="income"] .btn-primary{background:var(--income)}
   font-family:inherit;
 }
 
-.input:focus{border-color:var(--line-strong)}
+.input:focus-visible{box-shadow:0 0 0 2px var(--line-strong)}
+.input[aria-invalid="true"],.textarea[aria-invalid="true"]{box-shadow:0 0 0 2px var(--danger-line)}
 .input::placeholder{color:var(--faint)}
 
 .date-row .input{flex:0 0 auto;width:152px;padding:11px 12px}
@@ -315,7 +359,13 @@ body[data-type="income"] .btn-primary{background:var(--income)}
   white-space:nowrap;
 }
 
-.quick-dates button.is-active{border-color:var(--text);color:var(--text);font-weight:500}
+.quick-dates button.is-active{border-color:var(--text);color:var(--text);font-weight:500;background:var(--soft);box-shadow:inset 0 0 0 1.5px var(--text)}
+
+/* 记账页表单统一控件高度与段落间距，桌面端保留紧凑分段控件 */
+[data-page="record"] .input{min-height:46px}
+[data-page="record"] .quick-dates button{min-height:46px;display:flex;align-items:center;justify-content:center}
+[data-page="record"] .seg-block{margin:0}
+[data-page="record"] .btn-primary{min-height:50px;padding:13px 15px}
 
 .btn-primary{
   width:100%;
@@ -331,6 +381,35 @@ body[data-type="income"] .btn-primary{background:var(--income)}
 }
 
 .btn-primary:active{opacity:.85;transform:scale(var(--press-lg))}
+
+.btn-primary[disabled],.btn-mini[disabled]{opacity:.48;cursor:default}
+.btn-primary[disabled]:active{opacity:.48;transform:none}
+.btn-primary.is-busy{cursor:progress}
+.btn-primary.is-busy::before{
+  content:"";
+  display:inline-block;
+  width:14px;height:14px;
+  margin-right:7px;
+  vertical-align:-2px;
+  border:1.5px solid rgba(255,255,255,.45);
+  border-top-color:#fff;
+  border-radius:50%;
+  animation:spin .7s linear infinite;
+}
+.empty.is-loading,.notice.is-loading{color:var(--muted)}
+.empty.is-loading::before,.notice.is-loading::before{
+  content:"";
+  display:inline-block;
+  width:12px;height:12px;
+  margin-right:7px;
+  vertical-align:-2px;
+  border:1.5px solid var(--line-strong);
+  border-top-color:var(--accent);
+  border-radius:50%;
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty.is-loading{padding:20px 8px}
 
 .btn-ghost-danger{
   width:100%;
@@ -353,13 +432,18 @@ body[data-type="income"] .btn-primary{background:var(--income)}
   display:flex;
   align-items:center;
   justify-content:space-between;
+  gap:6px;
   margin-bottom:12px;
 }
+.month-nav .icon-btn,.month-nav .text-btn{flex:none}
 
 .month-label{
   display:inline-flex;
   align-items:center;
+  justify-content:center;
   gap:4px;
+  flex:1 1 auto;
+  min-width:0;
   border:none;
   background:transparent;
   border-radius:10px;
@@ -370,6 +454,7 @@ body[data-type="income"] .btn-primary{background:var(--income)}
   color:var(--text);
   cursor:pointer;
 }
+.month-label span{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .month-label:active{background:var(--press)}
 .month-caret{color:var(--muted);flex:none;margin-top:1px;transition:transform .18s var(--ease-out)}
 .month-label[aria-expanded="true"] .month-caret{transform:rotate(180deg)}
@@ -496,13 +581,15 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 
 .list-total{
   display:flex;
+  flex-wrap:wrap;
+  gap:6px 14px;
   justify-content:space-between;
   font-size:13px;
   color:var(--muted);
   padding:0 4px 10px;
 }
-
-.list-total b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+.list-total span{min-width:0}
+.list-total b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
 
 .tx-day{margin-bottom:14px}
 
@@ -639,12 +726,14 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 .tx-day-head{
   display:flex;
   justify-content:space-between;
+  gap:12px;
   font-size:12px;
-  color:var(--faint);
+  color:var(--muted);
   padding:0 4px 6px;
 }
+.tx-day-head span:first-child{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 
-.tx-day-head b{font-weight:500;color:var(--muted);font-variant-numeric:tabular-nums}
+.tx-day-head b{font-weight:500;color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap}
 
 .tx-group{
   background:var(--card);
@@ -678,6 +767,8 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 .tx-item::after{content:"";position:absolute;inset:0;background:var(--edit-bg);opacity:0;pointer-events:none}
 @keyframes txFlash{from{opacity:.72}to{opacity:0}}
 .tx-item.is-flash::after{animation:txFlash var(--dur-flash) var(--ease-out) 1}
+@keyframes dayFlash{from{box-shadow:0 0 0 3px var(--edit-bg)}to{box-shadow:0 0 0 0 transparent}}
+.tx-day.is-flash .tx-group{animation:dayFlash var(--dur-flash) var(--ease-out) 1}
 
 .tx-ico{
   width:34px;
@@ -712,7 +803,7 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 
 .tx-note{
   font-size:12px;
-  color:var(--faint);
+  color:var(--muted);
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
@@ -728,7 +819,8 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 .tx-amt.is-expense{color:var(--expense)}
 .tx-amt.is-income{color:var(--income)}
 
-.empty{text-align:center;color:var(--faint);font-size:14px;padding:56px 20px}
+.empty{text-align:center;color:var(--muted);font-size:14px;padding:56px 20px}
+.empty.is-compact{padding:22px 10px}
 .empty-ico{font-size:30px;margin-bottom:10px;opacity:.7}
 .empty-reset{
   display:block;
@@ -770,7 +862,7 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 }
 
 .hero-meta div{display:flex;flex-direction:column;gap:2px}
-.hero-meta span{font-size:12px;color:var(--faint)}
+.hero-meta span{font-size:12px;color:var(--muted)}
 .hero-meta b{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
 
 .stat-grid{
@@ -789,7 +881,7 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 }
 
 .stat b{display:block;font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
-.stat span{font-size:12px;color:var(--faint)}
+.stat span{font-size:12px;color:var(--muted)}
 
 .rank-list{
   background:var(--card);
@@ -797,6 +889,7 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
   border-radius:var(--radius);
   padding:14px;
 }
+.rank-list.is-in{margin-bottom:16px}
 
 .rank-item{margin-bottom:13px}
 .rank-item:last-child{margin-bottom:0}
@@ -830,7 +923,7 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
   height:100%;
 }
 
-.trend-val{font-size:10px;color:var(--faint);font-variant-numeric:tabular-nums;white-space:nowrap}
+.trend-val{font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
 
 .trend-bar{
   width:100%;
@@ -1000,14 +1093,21 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 }
 .bill-head{font-size:12px;color:var(--muted);margin-bottom:4px}
 .bill-row{
-  display:flex;
+  display:grid;
+  grid-template-columns:minmax(0,auto) minmax(0,1fr) auto;
   align-items:center;
   gap:8px;
   font-size:12.5px;
   padding:7px 0;
   border-top:1px solid var(--line);
 }
-.bill-row > span:first-child{flex:none;color:var(--muted)}
+.bill-row > span:first-child{
+  min-width:0;
+  color:var(--muted);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
 .bill-note{
   flex:1;
   min-width:0;
@@ -1134,7 +1234,7 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 .budget-text{font-size:12.5px;color:var(--muted)}
 .budget-text.is-over{color:var(--danger-text)}
 .budget-none{font-size:12.5px;color:var(--faint)}
-.rank-budget{font-size:11.5px;color:var(--faint);margin-top:4px}
+.rank-budget{font-size:11.5px;color:var(--muted);margin-top:4px}
 .rank-budget.is-over{color:var(--danger-text)}
 .budget-cat{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)}
 .budget-cat span{font-size:13.5px}
@@ -1186,7 +1286,6 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
   margin-bottom:10px;
 }
 .batch-bar .batch-count{flex:1;text-align:right;font-size:12.5px;color:var(--muted)}
-.btn-mini[disabled]{opacity:.45;cursor:default}
 .tx-check{
   flex:none;
   align-self:center;
@@ -1215,6 +1314,13 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 .range-row .input{min-width:0;padding:9px 8px;font-size:16px;text-align:center}
 .range-row .input[type="text"]{flex:1}
 .range-row .input[type="date"]{flex:1.4}
+
+@media (max-width:420px){
+  .range-row{display:grid;grid-template-columns:1fr 1fr}
+  .range-row .input{width:100%}
+  .bill-row{grid-template-columns:minmax(0,1fr) auto;row-gap:2px}
+  .bill-row > span:first-child{grid-column:1 / -1;font-size:11.5px}
+}
 
 /* 分类排行可点：跳到按该分类筛选的流水 */
 .rank-item{cursor:pointer}
@@ -1293,6 +1399,10 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
   padding:2px 0;
   scrollbar-width:none;
   -webkit-overflow-scrolling:touch;
+}
+.cat-filter-wrap.can-scroll .cat-filter-scroll{
+  -webkit-mask-image:linear-gradient(to right,#000 calc(100% - 22px),transparent);
+  mask-image:linear-gradient(to right,#000 calc(100% - 22px),transparent);
 }
 .cat-filter-scroll::-webkit-scrollbar{display:none}
 .cat-filter-scroll .chip{
@@ -1373,6 +1483,7 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
   margin:10px 0;
   line-height:1.5;
 }
+.textarea:focus-visible{box-shadow:0 0 0 2px var(--line-strong)}
 
 .stopped{
   position:fixed;
@@ -1503,6 +1614,9 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 
 @media (max-width:380px){
   .cat-grid{grid-template-columns:repeat(4,1fr)}
+  .record-head #typeSwitch{width:100%}
+  .record-head #typeSwitch .seg-item{flex:1;padding-left:4px;padding-right:4px}
+  .record-head .text-btn{margin-left:auto}
   .date-row{flex-wrap:wrap}
   .date-row .input{width:100%}
   .quick-dates{width:100%}
@@ -1514,7 +1628,9 @@ select.mp-year:focus{outline:none;box-shadow:0 0 0 2px var(--soft)}
 /* 系统开了「减弱动态效果」时：不位移、不缩放、不生长，状态仍然完整可见 */
 @media (prefers-reduced-motion: reduce){
   html{scroll-behavior:auto}
-  .page.is-active,.stopped,.sheet,.sheet-mask,.toast,.tx-item.is-flash::after{animation:none!important}
+  .page.is-active,.stopped,.sheet,.sheet-mask,.toast,.tx-item.is-flash::after,
+  .tx-day.is-flash .tx-group,.boot-hero,.boot-line,
+  .btn-primary.is-busy::before,.empty.is-loading::before,.notice.is-loading::before{animation:none!important}
   .month-picker,.sheet-mask,.switch .knob,.budget-bar i{transition:none}
   .month-picker{transform:none}
   .rank-bar i,.trend-bar{transform:none;transition:none}
@@ -1554,6 +1670,20 @@ html[data-theme="dark"]{
     --warn:#F5C542;--warn-soft:#332B16;--warn-line:#57491F;--warn-text:#E8C15C;
     --toast-bg:rgba(44,44,46,.96);--toast-text:#F2F2F7;
     --shadow:0 1px 2px rgba(0,0,0,.5),0 10px 30px rgba(0,0,0,.5);
+}
+
+/* 深色下分类选中底色按分类色与卡片混合，避免浅灰圆底在纯黑上跳出来 */
+html[data-theme="dark"] .cat-item.is-active .cat-ico{
+  background:color-mix(in srgb, var(--c) 22%, var(--card));
+  box-shadow:inset 0 0 0 1.5px color-mix(in srgb, var(--c) 55%, var(--line-strong));
+}
+
+/* 触摸设备把高频小控件扩大到接近 44px，视觉尺寸基本不变 */
+@media (pointer:coarse){
+  .icon-btn{width:44px;height:44px}
+  .text-btn{min-height:40px;padding:8px}
+  .chip{min-height:38px}
+  .btn-mini{min-height:40px}
 }
 
 /* ---------- 局域网访问开关（iOS 风格拨动开关） ---------- */

@@ -143,6 +143,23 @@ function toast(msg, ms) {
   }, ms || 2200);
 }
 
+/* 异步按钮的统一忙碌态：禁用点击、换提示文字，结束后恢复原文 */
+function setButtonBusy(btn, busy, label) {
+  if (!btn) { return; }
+  if (busy) {
+    if (!btn.getAttribute('data-idle-label')) { btn.setAttribute('data-idle-label', btn.textContent); }
+    btn.disabled = true;
+    btn.classList.add('is-busy');
+    btn.setAttribute('aria-busy', 'true');
+    if (label) { btn.textContent = label; }
+    return;
+  }
+  btn.disabled = false;
+  btn.classList.remove('is-busy');
+  btn.removeAttribute('aria-busy');
+  if (btn.getAttribute('data-idle-label')) { btn.textContent = btn.getAttribute('data-idle-label'); }
+}
+
 /* ---------- 存储 ---------- */
 /*
  * 两种模式：
@@ -462,6 +479,11 @@ function currentMonthKey() {
 
 function renderCategories() {
   var list = LedgerCore.activeCategories(db.categories, state.type);
+  if (!list.length) {
+    elCatGrid.innerHTML = '<div class="cat-empty">这个类型还没有可用分类' +
+      '<br><button class="btn-mini" type="button" data-catmanage>去管理分类</button></div>';
+    return;
+  }
   var html = '';
   for (var i = 0; i < list.length; i++) {
     var c = list[i];
@@ -518,14 +540,25 @@ function renderAmountHint() {
   var box = $('amountHint');
   if (!box) { return; }
   var res = amountExprResult();
-  if (!res) { box.classList.add('is-hidden'); box.textContent = ''; return; }
+  var amountBox = elAmount.closest('.amount-box');
+  if (!res) {
+    box.classList.add('is-hidden');
+    box.textContent = '';
+    if (amountBox) { amountBox.classList.remove('is-bad'); }
+    elAmount.removeAttribute('aria-invalid');
+    return;
+  }
   box.classList.remove('is-hidden');
   if (res.bad) {
     box.textContent = '这个算式算不出来，检查一下运算符';
     box.classList.add('is-bad');
+    if (amountBox) { amountBox.classList.add('is-bad'); }
+    elAmount.setAttribute('aria-invalid', 'true');
   } else {
     box.textContent = '= ' + fmtMoney(res.cents) + '（按「记下来」就记这个数）';
     box.classList.remove('is-bad');
+    if (amountBox) { amountBox.classList.remove('is-bad'); }
+    elAmount.removeAttribute('aria-invalid');
   }
 }
 
@@ -825,6 +858,16 @@ function renderCategoryChips() {
     if (left < viewL) { elCategoryChips.scrollLeft = Math.max(0, left - 8); }
     else if (right > viewR) { elCategoryChips.scrollLeft = right - elCategoryChips.clientWidth + 8; }
   }
+  syncCategoryFade();
+}
+
+/* 分类条还能继续向右滑时，右缘做一点渐隐提示；滑到底就撤掉 */
+function syncCategoryFade() {
+  if (!elCategoryChips) { return; }
+  var wrap = elCategoryChips.closest('.cat-filter-wrap');
+  if (!wrap) { return; }
+  var more = elCategoryChips.scrollWidth - elCategoryChips.clientWidth - elCategoryChips.scrollLeft > 2;
+  wrap.classList.toggle('can-scroll', more);
 }
 
 /* 金额 / 日期范围的当前值（读输入框本身，空 = 不生效） */
@@ -1395,7 +1438,7 @@ function renderTrash() {
   var box = $('trashList');
   $('btnEmptyTrash').classList.toggle('is-hidden', !list.length);
   if (!list.length) {
-    box.innerHTML = '<div class="empty" style="padding:24px 8px">回收站是空的</div>';
+    box.innerHTML = '<div class="empty is-compact">回收站是空的</div>';
     return;
   }
   var html = '';
@@ -1439,7 +1482,7 @@ function renderSuspects() {
   var actions = $('suspectsActions');
   if (!list.length) {
     if (actions) { actions.classList.add('is-hidden'); }
-    box.innerHTML = '<div class="empty" style="padding:20px 8px">没找到疑似的转账。<br>' +
+    box.innerHTML = '<div class="empty is-compact">没找到疑似的转账。<br>' +
       '如果还有该跳过的（比如朋友间借还），在流水里点开那笔改成「不计收支」就行。</div>';
     return;
   }
@@ -1565,11 +1608,11 @@ function setCatKind(kind) {
   /* 转账分类不给从界面创建：它由「不计收支」类型自动使用 */
 }
 
-function openCats() {
+function openCats(kind) {
   catEditId = null;
   $('catName').value = '';
   $('catIcon').value = '';
-  setCatKind('expense');
+  setCatKind(kind === 'income' ? 'income' : 'expense');
   renderCats();
   openSheet(elSheetCats);
 }
@@ -1620,7 +1663,7 @@ function renderHistory(data) {
   if (!box) { return; }
   var list = (data && data.backups) || [];
   if (!list.length) {
-    box.innerHTML = '<div class="empty" style="padding:20px 8px">还没有历史版本。<br>' +
+    box.innerHTML = '<div class="empty is-compact">还没有历史版本。<br>' +
       '电脑上每保存一次账本就会留一份，记几笔账再回来看。</div>';
     return;
   }
@@ -1650,7 +1693,7 @@ function openHistory() {
     return;
   }
   var box = $('historyList');
-  if (box) { box.innerHTML = '<div class="empty" style="padding:20px 8px">正在读取…</div>'; }
+  if (box) { box.innerHTML = '<div class="empty is-loading">正在读取…</div>'; }
   openSheet(elSheetHistory);
   api('GET', '/api/backups', null, function (err, status, text) {
     if (err || status !== 200) {
@@ -1702,7 +1745,7 @@ function renderRules() {
   if (!box) { return; }
   var list = db.rules || [];
   if (!list.length) {
-    box.innerHTML = '<div class="empty" style="padding:16px 8px">' +
+    box.innerHTML = '<div class="empty is-compact">' +
       '还没有自己的规则。<br>在流水里点开一笔导入的账、改个分类，这里就会自动多一条。</div>';
     return;
   }
@@ -1752,7 +1795,7 @@ function renderRecur() {
   var list = db.recur || [];
   var box = $('recurList');
   if (!list.length) {
-    box.innerHTML = '<div class="empty" style="padding:16px 8px">还没有模板，下面加一个</div>';
+    box.innerHTML = '<div class="empty is-compact">还没有模板，下面加一个</div>';
     return;
   }
   var month = currentMonthKey();
@@ -2000,7 +2043,7 @@ function renderYearReport() {
       '<div class="trend-bar" style="height:' + h + 'px"></div></div>';
     labels += '<span>' + (m + 1) + '月</span>';
   }
-  html += '<div class="trend"><div class="trend-bars">' + bars + '</div><div class="trend-label">' + labels + '</div></div>';
+  html += '<div class="trend is-in"><div class="trend-bars">' + bars + '</div><div class="trend-label">' + labels + '</div></div>';
 
   if (r.maxTx) {
     var mc = categoryById(r.maxTx.categoryId);
@@ -2010,7 +2053,7 @@ function renderYearReport() {
   }
 
   if (r.topPeers.length) {
-    html += '<div class="block-title">花得最多的对方</div>';
+    html += '<div class="block-title">花得最多的对方</div><div class="rank-list is-in">';
     var maxPeer = r.topPeers[0].cents || 1;
     r.topPeers.forEach(function (p) {
       var pct = Math.max(2, Math.round(p.cents / maxPeer * 100));
@@ -2019,13 +2062,14 @@ function renderYearReport() {
         '<span class="rank-val"><b>' + fmtMoney(p.cents) + '</b></span></div>' +
         '<div class="rank-bar"><i style="width:' + pct + '%"></i></div></div>';
     });
+    html += '</div>';
   }
 
   var catRows = Object.keys(r.byCategory).map(function (id) {
     return { id: id, cents: r.byCategory[id] };
   }).sort(function (a, b) { return b.cents - a.cents; });
   if (catRows.length) {
-    html += '<div class="block-title">分类排行</div>';
+    html += '<div class="block-title">分类排行</div><div class="rank-list is-in">';
     var maxCat = catRows[0].cents || 1;
     catRows.forEach(function (row) {
       var c = categoryById(row.id);
@@ -2035,6 +2079,7 @@ function renderYearReport() {
         '<span class="rank-val"><b>' + fmtMoney(row.cents) + '</b></span></div>' +
         '<div class="rank-bar"><i style="width:' + pct + '%;background:' + safeColor(c.color, '#9AA0A6') + '"></i></div></div>';
     });
+    html += '</div>';
   }
 
   $('yearBody').innerHTML = html;
@@ -2215,7 +2260,7 @@ function renderSafeToSpend(key) {
 function renderRank(expenseList, totalCents, budCtx) {
   if (!expenseList.length) {
     elRankList.classList.remove('is-in');
-    elRankList.innerHTML = '<div class="empty" style="padding:24px 8px">\u8FD9\u4E2A\u6708\u8FD8\u6CA1\u6709\u652F\u51FA</div>';
+    elRankList.innerHTML = '<div class="empty is-compact">\u8FD9\u4E2A\u6708\u8FD8\u6CA1\u6709\u652F\u51FA</div>';
     return;
   }
   var groups = {};
@@ -2553,6 +2598,8 @@ function applyTheme(t) {
   var dark = t === 'dark' || (t === 'auto' && mqDark && mqDark.matches);
   if (dark) { document.documentElement.setAttribute('data-theme', 'dark'); }
   else { document.documentElement.removeAttribute('data-theme'); }
+  var meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) { meta.setAttribute('content', dark ? '#000000' : '#F2F2F7'); }
   syncThemeSeg();
 }
 
@@ -2854,6 +2901,7 @@ elTypeSwitch.addEventListener('click', function (e) {
 });
 
 elCatGrid.addEventListener('click', function (e) {
+  if (e.target.closest('[data-catmanage]')) { openCats(state.type); return; }
   var btn = e.target.closest('.cat-item');
   if (!btn) { return; }
   state.categoryId = btn.getAttribute('data-cat');
@@ -2969,6 +3017,8 @@ if (elCategoryChips) {
     state.showAll = false;
     renderList();
   });
+  elCategoryChips.addEventListener('scroll', syncCategoryFade, { passive: true });
+  window.addEventListener('resize', syncCategoryFade);
 }
 
 if (elBtnClearFilters) {
@@ -3392,7 +3442,7 @@ elBillFile.addEventListener('change', function () {
   if (!file) { return; }
   billPending = null;
   elBtnBillOk.classList.add('is-hidden');
-  showBillResult('<div class="notice">正在读 ' + esc(file.name) + ' …</div>');
+  showBillResult('<div class="notice is-loading">正在读 ' + esc(file.name) + ' …</div>');
   var reader = new FileReader();
   reader.onload = function () { previewBillFile(reader.result); };
   reader.onerror = function () { showBillResult('<div class="notice is-warn">文件读取失败</div>'); };
@@ -3516,6 +3566,8 @@ function init() {
     renderList();
     renderSummary();
     refreshBackupNotice();
+    document.body.classList.remove('is-booting');
+    $('main').setAttribute('aria-busy', 'false');
 
     if (!storageOK && mode === 'local') {
       toast('浏览器禁用了本地存储，记的账无法保存', 6000);
@@ -3742,27 +3794,36 @@ function showPinGate(cb) {
   $('pinErr').classList.add('is-hidden');
   var input = $('pinInput');
   input.value = '';
+  input.removeAttribute('aria-invalid');
   setTimeout(function () { input.focus(); }, 60);
 }
 
 function submitPin() {
-  var pin = $('pinInput').value.trim();
-  if (!/^[0-9]{6}$/.test(pin)) { $('pinErr').classList.remove('is-hidden'); return; }
-  $('btnPinOk').disabled = true;
+  var input = $('pinInput');
+  var pin = input.value.trim();
+  if (!/^[0-9]{6}$/.test(pin)) {
+    $('pinErr').classList.remove('is-hidden');
+    input.setAttribute('aria-invalid', 'true');
+    return;
+  }
+  setButtonBusy($('btnPinOk'), true, '正在验证…');
   api('POST', '/api/auth', JSON.stringify({ pin: pin }), function (err, status) {
-    $('btnPinOk').disabled = false;
+    setButtonBusy($('btnPinOk'), false);
     if (!err && status === 200) {
+      input.removeAttribute('aria-invalid');
       $('pinGate').classList.add('is-hidden');
       var cb = pinGateCb;
       pinGateCb = null;
       if (cb) { cb(); } else { location.reload(); }
     } else {
+      input.setAttribute('aria-invalid', 'true');
       $('pinErr').classList.remove('is-hidden');
     }
   });
 }
 
 $('btnPinOk').addEventListener('click', submitPin);
+$('pinInput').addEventListener('input', function () { this.removeAttribute('aria-invalid'); });
 $('pinInput').addEventListener('keydown', function (e) {
   if (e.key === 'Enter') { submitPin(); }
 });

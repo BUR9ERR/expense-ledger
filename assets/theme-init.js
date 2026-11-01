@@ -20,5 +20,7 @@
     var dark = t === 'dark' || (t !== 'light' && window.matchMedia &&
                window.matchMedia('(prefers-color-scheme: dark)').matches);
     if (dark) { document.documentElement.setAttribute('data-theme', 'dark'); }
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) { meta.setAttribute('content', dark ? '#000000' : '#F2F2F7'); }
   } catch (e) { /* 隐私模式等取不到 localStorage 时按浅色走 */ }
 })();
